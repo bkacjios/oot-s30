@@ -44,13 +44,22 @@ MapMarkInfo sMapMarkInfoTable[] = {
     { gMapBossIconTex, G_IM_FMT_IA, G_IM_SIZ_8b, 8, 8, 32, 32, 1 << 10, 1 << 10 },     // Boss Skull Icon
 };
 
+#ifdef LINUX
+static MapMarkDataOverlay sMapMarkDataOvl = {
+    NULL, ROM_FILE_UNSET, NULL, NULL, gMapMarkDataTable,
+};
+#else
 static MapMarkDataOverlay sMapMarkDataOvl = {
     NULL, ROM_FILE(ovl_map_mark_data), _ovl_map_mark_dataSegmentStart, _ovl_map_mark_dataSegmentEnd, gMapMarkDataTable,
 };
+#endif
 
 static MapMarkData** sLoadedMarkDataTable;
 
 void MapMark_Init(PlayState* play) {
+#ifdef LINUX
+    sLoadedMarkDataTable = gMapMarkDataTable;
+#else
     MapMarkDataOverlay* overlay = &sMapMarkDataOvl;
     u32 overlaySize = (uintptr_t)overlay->vramEnd - (uintptr_t)overlay->vramStart;
 
@@ -66,6 +75,7 @@ void MapMark_Init(PlayState* play) {
                                ? (void*)((uintptr_t)overlay->vramTable -
                                          (intptr_t)((uintptr_t)overlay->vramStart - (uintptr_t)overlay->loadedRamAddr))
                                : NULL);
+#endif
 
 #if PLATFORM_N64
     if ((B_80121220 != NULL) && (B_80121220->unk_2C != NULL)) {

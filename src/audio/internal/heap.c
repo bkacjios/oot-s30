@@ -754,13 +754,14 @@ void AudioHeap_UpdateReverbs(void) {
  * Clear the current Audio Interface Buffer
  */
 void AudioHeap_ClearCurrentAiBuffer(void) {
-    s32 curAiBufferIndex = gAudioCtx.curAiBufIndex;
+    s32 curAiBufferIndex = 0;//gAudioCtx.curAiBufIndex;
     s32 i;
 
     gAudioCtx.aiBufLengths[curAiBufferIndex] = gAudioCtx.audioBufferParameters.minAiBufferLength;
 
     for (i = 0; i < AIBUF_LEN; i++) {
-        gAudioCtx.aiBuffers[curAiBufferIndex][i] = 0;
+        gAudioCtx.aiBuffersL[curAiBufferIndex][i] = 0;
+        gAudioCtx.aiBuffersR[curAiBufferIndex][i] = 0;
     }
 }
 
@@ -826,10 +827,11 @@ s32 AudioHeap_ResetStep(void) {
         case 1:
             AudioHeap_Init();
             gAudioCtx.resetStatus = 0;
-            for (i = 0; i < 3; i++) {
+            for (i = 0; i < 1/* 3 */; i++) {
                 gAudioCtx.aiBufLengths[i] = gAudioCtx.audioBufferParameters.maxAiBufferLength;
                 for (j = 0; j < AIBUF_LEN; j++) {
-                    gAudioCtx.aiBuffers[i][j] = 0;
+                    gAudioCtx.aiBuffersL[i][j] = 0;
+                    gAudioCtx.aiBuffersR[i][j] = 0;
                 }
             }
             break;
@@ -859,6 +861,9 @@ void AudioHeap_Init(void) {
 
     // audio buffer parameters
     gAudioCtx.audioBufferParameters.samplingFrequency = spec->samplingFrequency;
+//#ifdef LINUX
+//    gAudioCtx.audioBufferParameters.samplingFrequency = 26800;
+//#endif
     gAudioCtx.audioBufferParameters.aiSamplingFrequency =
         osAiSetFrequency(gAudioCtx.audioBufferParameters.samplingFrequency);
     gAudioCtx.audioBufferParameters.samplesPerFrameTarget =

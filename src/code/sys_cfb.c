@@ -1,6 +1,7 @@
 #include "sys_cfb.h"
 
 #include "libu64/debug.h"
+#include "alignment.h"
 #include "attributes.h"
 #include "gfx.h"
 #include "line_numbers.h"
@@ -13,6 +14,18 @@
 uintptr_t sSysCfbFbPtr[2];
 uintptr_t sSysCfbEnd;
 
+#ifdef LINUX
+// The frame is drawn on the GPU, but the game also renders small images into
+// framebuffer memory (the pause menu's Link) that the renderer copies back
+// here, so the framebuffers must be real RAM
+static u16 sSysCfbLinux[2][SCREEN_WIDTH * SCREEN_HEIGHT] ALIGNED(64);
+
+void SysCfb_Init(s32 n64dd) {
+    sSysCfbFbPtr[0] = (uintptr_t)sSysCfbLinux[0];
+    sSysCfbFbPtr[1] = (uintptr_t)sSysCfbLinux[1];
+    sSysCfbEnd = (uintptr_t)(sSysCfbLinux + 2);
+}
+#else
 void SysCfb_Init(s32 n64dd) {
     u32 screenSize;
     UNUSED_NDEBUG uintptr_t tmpFbEnd;
@@ -55,6 +68,7 @@ void SysCfb_Init(s32 n64dd) {
     PRINTF(T("フレームバッファのアドレスは %08x と %08x です\n", "Frame buffer addresses are %08x and %08x\n"),
            sSysCfbFbPtr[0], sSysCfbFbPtr[1]);
 }
+#endif
 
 void SysCfb_Reset(void) {
     sSysCfbFbPtr[0] = 0;

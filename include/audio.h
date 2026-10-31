@@ -64,7 +64,14 @@ typedef void (*AudioCustomUpdateFunction)(void);
 // Must be the same amount of samples as copied by aDuplicate() (audio microcode)
 #define WAVE_SAMPLE_COUNT 64
 
+#ifdef LINUX
+// Font data pointers are relocated from font-relative offsets (< 1 MB) to RAM
+// addresses; on the S30 the image and heap sit at 0x40000000 and up (see
+// Makefile.s30), not in KSEG0
+#define AUDIO_RELOCATED_ADDRESS_START 0x10000000
+#else
 #define AUDIO_RELOCATED_ADDRESS_START K0BASE
+#endif
 
 typedef enum SoundSetting {
     /* 0 */ SOUND_SETTING_STEREO,
@@ -212,11 +219,20 @@ typedef struct AdpcmBook {
 } AdpcmBook; // size >= 0x8
 
 typedef struct Sample {
+#ifdef LINUX
+    // Little-endian: bitfields pack from LSB
+    /* 0x00 */ u32 size : 24; // Size of the sample
+    /* 0x03 */ u32 isRelocated : 1; // Has the sample header been relocated (offsets to pointers)
+    /* 0x03 */ u32 unk_bit26 : 1;
+    /* 0x03 */ u32 medium : 2; // Medium where sample is currently stored
+    /* 0x03 */ u32 codec : 4; // The state of compression or decompression
+#else
     /* 0x00 */ u32 codec : 4; // The state of compression or decompression
     /* 0x00 */ u32 medium : 2; // Medium where sample is currently stored
     /* 0x00 */ u32 unk_bit26 : 1;
     /* 0x00 */ u32 isRelocated : 1; // Has the sample header been relocated (offsets to pointers)
     /* 0x01 */ u32 size : 24; // Size of the sample
+#endif
     /* 0x04 */ u8* sampleAddr; // Raw sample data. Offset from the start of the sample bank or absolute address to either rom or ram
     /* 0x08 */ AdpcmLoop* loop; // Adpcm loop parameters used by the sample. Offset from the start of the sound font / pointer to ram
     /* 0x0C */ AdpcmBook* book; // Adpcm book parameters used by the sample. Offset from the start of the sound font / pointer to ram
@@ -397,12 +413,23 @@ typedef struct AdsrState {
 } AdsrState; // size = 0x20
 
 typedef struct StereoData {
+#ifdef LINUX
+    // Little-endian: bitfields pack from LSB
+    /* 0x00 */ u8 usesHeadsetPanEffects : 1;
+    /* 0x00 */ u8 stereoHeadsetEffects : 1;
+    /* 0x00 */ u8 strongLeft : 1;
+    /* 0x00 */ u8 strongRight : 1;
+    /* 0x00 */ u8 bit2 : 2;
+    /* 0x00 */ u8 unused : 2;
+#else
+    // Big-endian: bitfields pack from MSB
     /* 0x00 */ u8 unused : 2;
     /* 0x00 */ u8 bit2 : 2;
     /* 0x00 */ u8 strongRight : 1;
     /* 0x00 */ u8 strongLeft : 1;
     /* 0x00 */ u8 stereoHeadsetEffects : 1;
     /* 0x00 */ u8 usesHeadsetPanEffects : 1;
+#endif
 } StereoData; // size = 0x1
 
 typedef union Stereo {
@@ -787,10 +814,17 @@ typedef struct AudioCmd {
     /* 0x0 */ union{
         u32 opArgs;
         struct {
+#ifdef LINUX
+            u8 arg2;
+            u8 arg1;
+            u8 arg0;
+            u8 op;
+#else
             u8 op;
             u8 arg0;
             u8 arg1;
             u8 arg2;
+#endif
         };
     };
     /* 0x4 */ union {
@@ -946,7 +980,8 @@ typedef struct AudioContext {
     /* 0x28C0 */ AudioTask rspTask[2];
     /* 0x2960 */ f32 maxTempoTvTypeFactors; // tvType factors that impact maxTempo, in units of milliseconds/frame
     /* 0x2964 */ s32 refreshRate;
-    /* 0x2968 */ s16* aiBuffers[3];
+    /* 0x2968 */ s16* aiBuffersL[3];
+    /* 0x2968 */ s16* aiBuffersR[3];
     /* 0x2974 */ s16 aiBufLengths[3];
     /* 0x297C */ u32 audioRandom;
     /* 0x2980 */ s32 audioErrorFlags;
@@ -1029,7 +1064,7 @@ typedef struct AudioHeapInitSizes {
 
 // TODO these prototypes should be sorted into the relevant audio header files
 
-Acmd* AudioSynth_Update(Acmd* cmdStart, s32* cmdCnt, s16* aiStart, s32 aiBufLen);
+Acmd* AudioSynth_Update(Acmd* cmdStart, s32* cmdCnt, s16* aiStartL, s16* aiStartR, s32 aiBufLen);
 void AudioHeap_DiscardFont(s32 fontId);
 void AudioHeap_ReleaseNotesForFont(s32 fontId);
 void AudioHeap_DiscardSequence(s32 seqId);

@@ -20,6 +20,8 @@
 #include "assets/objects/gameplay_keep/gameplay_keep.h"
 #include "assets/textures/parameter_static/parameter_static.h"
 
+extern void gfx_texture_cache_invalidate(void* addr);
+
 MapData* gMapData;
 
 s16 sPlayerInitialPosX = 0;
@@ -51,8 +53,8 @@ void Map_SetPaletteData(PlayState* play, s16 room) {
            interfaceCtx->mapPaletteIndex);
     PRINTF_RST();
 
-    interfaceCtx->mapPalette[paletteIndex * 2] = 2;
-    interfaceCtx->mapPalette[paletteIndex * 2 + 1] = 0xBF;
+    interfaceCtx->mapPalette[MAP_PAL_IDX(paletteIndex * 2)] = 2;
+    interfaceCtx->mapPalette[MAP_PAL_IDX(paletteIndex * 2 + 1)] = 0xBF;
 }
 
 void Map_SetFloorPalettesData(PlayState* play, s16 floor) {
@@ -62,13 +64,13 @@ void Map_SetFloorPalettesData(PlayState* play, s16 floor) {
     s16 i;
 
     for (i = 0; i < 16; i++) {
-        interfaceCtx->mapPalette[i] = 0;
-        interfaceCtx->mapPalette[i + 16] = 0;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(i)] = 0;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(i + 16)] = 0;
     }
 
     if (CHECK_DUNGEON_ITEM(DUNGEON_MAP, mapIndex)) {
-        interfaceCtx->mapPalette[30] = 0;
-        interfaceCtx->mapPalette[31] = 1;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(30)] = 0;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(31)] = 1;
     }
 
     switch (play->sceneId) {
@@ -152,6 +154,7 @@ void Map_InitData(PlayState* play, s16 room) {
                              (uintptr_t)_map_grand_staticSegmentRomStart +
                                  gMapData->owMinimapTexOffset[extendedMapIndex],
                              gMapData->owMinimapTexSize[mapIndex], "../z_map_exp.c", 309);
+            gfx_texture_cache_invalidate(interfaceCtx->mapSegment);
             interfaceCtx->unk_258 = mapIndex;
             break;
         case SCENE_DEKU_TREE:
@@ -192,6 +195,7 @@ void Map_InitData(PlayState* play, s16 room) {
                                  ((gMapData->dgnMinimapTexIndexOffset[mapIndex] + room) * MAP_I_TEX_SIZE),
                              MAP_I_TEX_SIZE, "../z_map_exp.c", 346);
 #endif
+            gfx_texture_cache_invalidate(play->interfaceCtx.mapSegment);
 
             R_COMPASS_OFFSET_X = gMapData->roomCompassOffsetX[mapIndex][room];
             R_COMPASS_OFFSET_Y = gMapData->roomCompassOffsetY[mapIndex][room];
@@ -576,11 +580,11 @@ void Map_Update(PlayState* play) {
             case SCENE_SHADOW_TEMPLE:
             case SCENE_BOTTOM_OF_THE_WELL:
             case SCENE_ICE_CAVERN:
-                interfaceCtx->mapPalette[30] = 0;
+                interfaceCtx->mapPalette[MAP_PAL_IDX(30)] = 0;
                 if (CHECK_DUNGEON_ITEM(DUNGEON_MAP, mapIndex)) {
-                    interfaceCtx->mapPalette[31] = 1;
+                    interfaceCtx->mapPalette[MAP_PAL_IDX(31)] = 1;
                 } else {
-                    interfaceCtx->mapPalette[31] = 0;
+                    interfaceCtx->mapPalette[MAP_PAL_IDX(31)] = 0;
                 }
 
                 for (floor = 0; floor < 8; floor++) {

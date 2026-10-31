@@ -8,6 +8,10 @@
 #include "versions.h"
 #include "audio.h"
 
+#ifdef LINUX
+#include "s30_audio.h"
+#endif
+
 #define SAMPLES_TO_OVERPRODUCE 0x10
 #define EXTRA_BUFFERED_AI_SAMPLES_TARGET 0x80
 
@@ -44,7 +48,8 @@ AudioTask* AudioThread_UpdateImpl(void) {
     s32 pad;
     s32 j;
     s32 sp5C;
-    s16* curAiBuffer;
+    s16* curAiBufferL;
+    s16* curAiBufferR;
     OSTask_t* task;
     s32 index;
     u32 sp4C;
@@ -52,6 +57,17 @@ AudioTask* AudioThread_UpdateImpl(void) {
     s32 i;
 
     gAudioCtx.totalTaskCount++;
+#ifdef LINUX
+    {
+        static int audioUpdDbg = 0;
+        if (audioUpdDbg < 10) {
+            printf("AudioThread_Update[%d]: resetStatus=%d writePos=%d readPos=%d\n",
+                   (int)gAudioCtx.totalTaskCount, (int)gAudioCtx.resetStatus,
+                   (int)gAudioCtx.threadCmdWritePos, (int)gAudioCtx.threadCmdReadPos);
+            audioUpdDbg++;
+        }
+    }
+#endif
     if (gAudioCtx.totalTaskCount % (gAudioCtx.audioBufferParameters.specUnk4) != 0) {
         if (gAudioCustomUpdateFunction != NULL) {
             gAudioCustomUpdateFunction();
@@ -70,8 +86,14 @@ AudioTask* AudioThread_UpdateImpl(void) {
     gAudioCtx.curAiBufIndex++;
     gAudioCtx.curAiBufIndex %= 3;
     index = (gAudioCtx.curAiBufIndex - 2 + 3) % 3;
+#ifdef LINUX
+    // ALSA queue level stands in for the N64 AI length register
+    samplesRemainingInAi = S30Audio_QueuedFrames();
+#else
     samplesRemainingInAi = osAiGetLength() / 4;
+#endif
 
+#ifndef LINUX
     if (gAudioCtx.resetTimer < 16) {
         if (gAudioCtx.aiBufLengths[index] != 0) {
             osAiSetNextBuffer(gAudioCtx.aiBuffers[index], gAudioCtx.aiBufLengths[index] * 4);
@@ -79,6 +101,7 @@ AudioTask* AudioThread_UpdateImpl(void) {
             if (gAudioCtx.aiBufLengths[index]) {}
         }
     }
+#endif
 
     if (gAudioCustomUpdateFunction != NULL) {
         gAudioCustomUpdateFunction();
@@ -131,7 +154,8 @@ AudioTask* AudioThread_UpdateImpl(void) {
     gAudioCtx.curAbiCmdBuf = gAudioCtx.abiCmdBufs[gAudioCtx.rspTaskIndex];
 
     index = gAudioCtx.curAiBufIndex;
-    curAiBuffer = gAudioCtx.aiBuffers[index];
+    curAiBufferL = gAudioCtx.aiBuffersL[index];
+    curAiBufferR = gAudioCtx.aiBuffersR[index];
 
     gAudioCtx.aiBufLengths[index] =
         (s16)((((gAudioCtx.audioBufferParameters.samplesPerFrameTarget - samplesRemainingInAi) +
@@ -151,6 +175,16 @@ AudioTask* AudioThread_UpdateImpl(void) {
         // msg = 0000RREE R = read pos, E = End Pos
         while (osRecvMesg(gAudioCtx.threadCmdProcQueueP, (OSMesg*)&sp4C, OS_MESG_NOBLOCK) != -1) {
             if (1) {}
+#ifdef LINUX
+            {
+                static int cmdDbg = 0;
+                if (cmdDbg < 10) {
+                    printf("  ProcessCmds: msg=0x%08x (rd=%d wr=%d)\n",
+                           (unsigned)sp4C, (unsigned)(sp4C >> 8) & 0xFF, (unsigned)sp4C & 0xFF);
+                    cmdDbg++;
+                }
+            }
+#endif
             AudioThread_ProcessCmds(sp4C);
             j++;
         }
@@ -160,11 +194,13 @@ AudioTask* AudioThread_UpdateImpl(void) {
     }
 
     gAudioCtx.curAbiCmdBuf =
-        AudioSynth_Update(gAudioCtx.curAbiCmdBuf, &abiCmdCnt, curAiBuffer, gAudioCtx.aiBufLengths[index]);
+        AudioSynth_Update(gAudioCtx.curAbiCmdBuf, &abiCmdCnt, curAiBufferL, curAiBufferR,
+            gAudioCtx.aiBufLengths[index]);
+    S30Audio_Play(curAiBufferL, curAiBufferR, gAudioCtx.aiBufLengths[index]);
 
     // Update audioRandom to the next random number
     gAudioCtx.audioRandom = (gAudioCtx.audioRandom + gAudioCtx.totalTaskCount) * osGetCount();
-    gAudioCtx.audioRandom = gAudioCtx.audioRandom + gAudioCtx.aiBuffers[index][gAudioCtx.totalTaskCount & 0xFF];
+    gAudioCtx.audioRandom = gAudioCtx.audioRandom + gAudioCtx.aiBuffersL[index][gAudioCtx.totalTaskCount & 0xFF];
 
     // gWaveSamples[8] interprets compiled assembly code as s16 samples as a way to generate sound with noise.
     // Start with the address of AudioThread_Update, and offset it by a random number between 0 - 0xFFF0
@@ -213,6 +249,17 @@ void AudioThread_ProcessGlobalCmd(AudioCmd* cmd) {
     s32 i;
     s32 pad[3];
     u32 flags;
+
+#ifdef LINUX
+    {
+        static int globalCmdDbg = 0;
+        if (globalCmdDbg < 15) {
+            printf("  GlobalCmd: op=0x%02x arg0=%d arg1=%d arg2=%d data=0x%08x\n",
+                   (unsigned)cmd->op, (int)cmd->arg0, (int)cmd->arg1, (int)cmd->arg2, (unsigned)cmd->asUInt);
+            globalCmdDbg++;
+        }
+    }
+#endif
 
     switch (cmd->op) {
         case AUDIOCMD_OP_GLOBAL_SYNC_LOAD_SEQ_PARTS:
@@ -417,7 +464,11 @@ void AudioThread_QueueCmdS32(u32 opArgs, s32 data) {
  * original name: Nap_SetS8
  */
 void AudioThread_QueueCmdS8(u32 opArgs, s8 data) {
+#ifdef LINUX
+    u32 uData = (u32)(u8)data;
+#else
     u32 uData = data << 0x18;
+#endif
 
     AudioThread_QueueCmd(opArgs, (void**)&uData);
 }
@@ -426,7 +477,11 @@ void AudioThread_QueueCmdS8(u32 opArgs, s8 data) {
  * original name: Nap_SetU16
  */
 void AudioThread_QueueCmdU16(u32 opArgs, u16 data) {
+#ifdef LINUX
+    u32 uData = (u32)data;
+#else
     u32 uData = data << 0x10;
+#endif
 
     AudioThread_QueueCmd(opArgs, (void**)&uData);
 }
@@ -442,6 +497,16 @@ s32 AudioThread_ScheduleProcessCmds(void) {
         D_801304E8 = (u8)((gAudioCtx.threadCmdWritePos - gAudioCtx.threadCmdReadPos) + 0x100);
     }
 
+#ifdef LINUX
+    {
+        static int schedDbg = 0;
+        if (schedDbg < 10) {
+            printf("ScheduleProcessCmds: readPos=%d writePos=%d\n",
+                   (int)gAudioCtx.threadCmdReadPos, (int)gAudioCtx.threadCmdWritePos);
+            schedDbg++;
+        }
+    }
+#endif
     ret = osSendMesg(gAudioCtx.threadCmdProcQueueP,
                      (OSMesg)(((gAudioCtx.threadCmdReadPos & 0xFF) << 8) | (gAudioCtx.threadCmdWritePos & 0xFF)),
                      OS_MESG_NOBLOCK);

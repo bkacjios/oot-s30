@@ -26,7 +26,7 @@ typedef double f64;
 
 
 typedef float MtxF_t[4][4];
-typedef union MtxF {
+typedef union __attribute__((aligned(32))) MtxF {
     MtxF_t mf;
     struct {
         // Note: The order displayed here is the transpose of the order in which matrices are typically written.

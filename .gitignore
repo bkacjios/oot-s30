@@ -1,3 +1,5 @@
+include/platform_info.h
+
 # Cache files
 __pycache__/
 .pyc
@@ -30,3 +32,12 @@ graphs/
 # If you want to use your own gitignore rules without modifying this file:
 # - use `git config core.excludesFile path/to/my_gitignore_file`
 # - or edit `.git/info/exclude`
+build_pc/
+assets_pc/
+zelda
+/src/linux/vrom_table.h
+build_assets/
+build_s30/
+data/
+imgui.ini
+note.md

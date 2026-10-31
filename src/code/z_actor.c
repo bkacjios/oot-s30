@@ -107,7 +107,7 @@ void ActorShadow_Draw(Actor* actor, Lights* lights, PlayState* play, Gfx* dlist,
         temp2 = (1.0f - (temp1 * (1.0f / 350)));
         temp2 *= actor->shape.shadowScale;
         Matrix_Scale(temp2 * actor->scale.x, 1.0f, temp2 * actor->scale.z, MTXMODE_APPLY);
-
+        Matrix_Translate(0.0f, +1.0f, 0.0f, MTXMODE_APPLY);
         MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx, "../z_actor.c", 1588);
         gSPDisplayList(POLY_OPA_DISP++, dlist);
 
@@ -148,6 +148,7 @@ void ActorShadow_DrawFoot(PlayState* play, Light* light, MtxF* arg2, s32 arg3, f
     Matrix_Put(arg2);
     Matrix_RotateY(sp58, MTXMODE_APPLY);
     Matrix_Scale(arg5, 1.0f, arg5 * arg6, MTXMODE_APPLY);
+        Matrix_Translate(0.0f, +1.0f, 0.0f, MTXMODE_APPLY);
 
     MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx, "../z_actor.c", 1687);
     gSPDisplayList(POLY_OPA_DISP++, gFootShadowDL);
@@ -2730,12 +2731,14 @@ void Actor_DrawLensActors(PlayState* play, s32 numInvisibleActors, Actor** invis
                   T("魔法のメガネ 見えないＡcｔｏｒ表示 START", "Magic lens invisible Actor display START"),
                   numInvisibleActors);
 
+
     invisibleActor = &invisibleActors[0];
     for (i = 0; i < numInvisibleActors; i++) {
         gDPNoOpString(POLY_OPA_DISP++, T("魔法のメガネ 見えないＡcｔｏｒ表示", "Magic lens invisible Actor display"),
                       i);
         Actor_Draw(play, *(invisibleActor++));
     }
+
 
     gDPNoOpString(POLY_OPA_DISP++,
                   T("魔法のメガネ 見えないＡcｔｏｒ表示 END", "Magic lens invisible Actor display END"),
@@ -2848,7 +2851,12 @@ s32 Actor_CullingVolumeTest(PlayState* play, Actor* actor, Vec3f* projPos, f32 p
         // a frustum shape in front of the camera and a box shape behind the camera.
         invW = (projW < 1.0f) ? 1.0f : 1.0f / (f32)projW;
 
+#ifdef LINUX
+        // Widescreen (s30/gfx.c): the visible x reaches 480 / 427 of the 4:3 edge
+        if ((((fabsf(projPos->x) - actor->cullingVolumeScale) * invW) < 1.125f) &&
+#else
         if ((((fabsf(projPos->x) - actor->cullingVolumeScale) * invW) < 1.0f) &&
+#endif
             (((projPos->y + actor->cullingVolumeDownward) * invW) > -1.0f) &&
             (((projPos->y - actor->cullingVolumeScale) * invW) < 1.0f)) {
             return true;

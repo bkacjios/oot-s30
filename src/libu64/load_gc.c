@@ -5,6 +5,13 @@
 #include "dma.h"
 
 size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* vramStart, void* vramEnd, void* allocatedRamAddr) {
+#ifdef LINUX
+    // PC: Overlays are statically linked into ELF, no loading needed
+    if (gOverlayLogSeverity >= 3) {
+        PRINTF("Overlay_Load: STUBBED (vrom %08x-%08x)\n", vromStart, vromEnd);
+    }
+    return (uintptr_t)vramEnd - (uintptr_t)vramStart;
+#else
     s32 pad[3];
     uintptr_t end;
     OverlayRelocationSection* ovlRelocs;
@@ -25,11 +32,8 @@ size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* vramStart, voi
                allocatedRamAddr, end);
     }
 
-    // DMA the overlay, wait until transfer completes
     DmaMgr_RequestSync(allocatedRamAddr, vromStart, size);
 
-    // The overlay file is expected to contain a 32-bit offset from the end of the file to the start of the
-    // relocation section.
     relocSectionOffset = ((s32*)end)[-1];
     ovlRelocs = (OverlayRelocationSection*)(end - relocSectionOffset);
 
@@ -42,10 +46,8 @@ size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* vramStart, voi
         PRINTF(T("リロケーションします\n", "Relocate\n"));
     }
 
-    // Relocate pointers in overlay code and data
     Overlay_Relocate(allocatedRamAddr, ovlRelocs, vramStart);
 
-    // Clear bss if present, bss is located immediately following the relocations
     if (ovlRelocs->bssSize != 0) {
         if (gOverlayLogSeverity >= 3) {
             PRINTF(T("BSS領域をクリアします(%08x-%08x)\n", "Clear BSS area (%08x-%08x)\n"), end,
@@ -61,10 +63,8 @@ size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* vramStart, voi
                (uintptr_t)ovlRelocs + size);
     }
 
-    // Clear relocations, this space remains allocated and goes unused
     bzero(ovlRelocs, size);
 
-    // Manually flush caches
     size = (uintptr_t)vramEnd - (uintptr_t)vramStart;
     osWritebackDCache(allocatedRamAddr, size);
     osInvalICache(allocatedRamAddr, size);
@@ -75,4 +75,5 @@ size_t Overlay_Load(uintptr_t vromStart, uintptr_t vromEnd, void* vramStart, voi
     }
 
     return size;
+#endif
 }

@@ -862,7 +862,7 @@ AnimTask* AnimTaskQueue_NewTask(AnimTaskQueue* animTaskQueue, s32 type) {
     return task;
 }
 
-#if !PLATFORM_GC
+#if !PLATFORM_GC || defined(LINUX)
 #define LINK_ANIMATION_OFFSET(addr, offset) \
     (((uintptr_t)_link_animetionSegmentRomStart) + SEGMENT_OFFSET(addr) + (offset))
 #else
@@ -1106,13 +1106,24 @@ void AnimTaskQueue_Update(PlayState* play, AnimTaskQueue* animTaskQueue) {
 void SkelAnime_InitLink(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeader* skeletonHeaderSeg,
                         LinkAnimationHeader* animation, s32 flags, Vec3s* jointTable, Vec3s* morphTable,
                         s32 limbBufCount) {
-    FlexSkeletonHeader* skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
-    s32 headerJointCount = skeletonHeader->sh.limbCount;
+    FlexSkeletonHeader* skeletonHeader;
+    s32 headerJointCount;
     s32 limbCount;
     size_t allocSize;
 
+    PRINTF("SkelAnime_InitLink: skeletonHeaderSeg=0x%08X\n", (u32)skeletonHeaderSeg);
+    PRINTF("SkelAnime_InitLink: gSegments[6]=0x%08X\n", gSegments[6]);
+    
+    skeletonHeader = SEGMENTED_TO_VIRTUAL(skeletonHeaderSeg);
+    
+    PRINTF("SkelAnime_InitLink: resolved skeletonHeader=0x%08X\n", (u32)skeletonHeader);
+
+    headerJointCount = skeletonHeader->sh.limbCount;
+    PRINTF("SkelAnime_InitLink: limbCount from header=%d, limbBufCount=%d\n", headerJointCount, limbBufCount);
+
     skelAnime->initFlags = flags;
     limbCount = (flags & 2) ? headerJointCount : 1;
+
 
     if (flags & 1) {
         limbCount += headerJointCount;

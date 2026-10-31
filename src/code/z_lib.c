@@ -23,11 +23,7 @@
  * @param val value to write
  */
 void Lib_MemSet(u8* dest, size_t len, u8 val) {
-    size_t i;
-
-    // clang-format off
-    for (i = 0; i < len; i++) { *dest++ = val; }
-    // clang-format on
+    memset(dest, val, len);
 }
 
 /**

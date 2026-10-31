@@ -439,8 +439,8 @@ void PadMgr_RequestPadData(PadMgr* padMgr, Input* inputs, s32 gameRequest) {
     Input* inputOut;
     s32 buttonDiff;
 
-    PadMgr_LockPadData(padMgr);
-
+     PadMgr_LockPadData(padMgr);
+ 
     for (inputIn = &padMgr->inputs[0], inputOut = &inputs[0], i = 0; i < MAXCONTROLLERS; i++, inputIn++, inputOut++) {
         if (gameRequest) {
             // Copy inputs as-is, press and rel are calculated prior in `PadMgr_UpdateInputs`
@@ -511,6 +511,17 @@ void PadMgr_ThreadEntry(PadMgr* padMgr) {
 }
 
 void PadMgr_Init(PadMgr* padMgr, OSMesgQueue* serialEventQueue, IrqMgr* irqMgr, OSId id, OSPri priority, void* stack) {
+#ifdef LINUX
+    bzero(padMgr, sizeof(PadMgr));
+    padMgr->nControllers = MAXCONTROLLERS;
+    padMgr->validCtrlrsMask = 1;           // Mark controller 0 as valid
+    padMgr->ctrlrIsConnected[0] = true;    // Mark controller 0 as connected
+    
+    osCreateMesgQueue(&padMgr->lockQueue, &padMgr->lockMsg, 1);
+    osSendMesg(&padMgr->lockQueue, NULL, OS_MESG_NOBLOCK);
+
+    
+#else
     PRINTF(T("パッドマネージャ作成 padmgr_Create()\n", "Pad Manager creation padmgr_Create()\n"));
 
     bzero(padMgr, sizeof(PadMgr));
@@ -532,4 +543,5 @@ void PadMgr_Init(PadMgr* padMgr, OSMesgQueue* serialEventQueue, IrqMgr* irqMgr, 
 
     osCreateThread(&padMgr->thread, id, (void (*)(void*))PadMgr_ThreadEntry, padMgr, stack, priority);
     osStartThread(&padMgr->thread);
+#endif
 }

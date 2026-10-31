@@ -13,6 +13,7 @@
 #include "alloca.h"
 #include "build.h"
 #include "console_logo_state.h"
+#include "controller.h"
 #include "gfx.h"
 #include "gfx_setupdl.h"
 #include "padmgr.h"
@@ -56,7 +57,22 @@ void ConsoleLogo_PrintBuildInfo(Gfx** gfxP) {
 #endif
 
 void ConsoleLogo_Calc(ConsoleLogoState* this) {
-#if !PLATFORM_GC
+/* Run the N64-style logo sequence (fade in, spin, fade out) instead of the
+   GC base's immediate exit — the GC releases skip the N64 boot logo entirely
+   (one frame, fully covered by the alpha-255 fill). Init already sets
+   coverAlpha/addAlpha/visibleDuration for this path on every platform. */
+#if !PLATFORM_GC || defined(LINUX)
+#ifdef LINUX
+    Input* input = &this->state.input[0];
+
+    // Skippable with the PRESS START screen's confirm buttons (EnMag): end
+    // the visible phase and fade out (about 0.85 s, vs 4 s normally)
+    if (CHECK_BTN_ALL(input->press.button, BTN_START) || CHECK_BTN_ALL(input->press.button, BTN_A) ||
+        CHECK_BTN_ALL(input->press.button, BTN_B)) {
+        this->visibleDuration = 0;
+        this->addAlpha = 15;
+    }
+#endif
     if ((this->coverAlpha == 0) && (this->visibleDuration != 0)) {
         this->unk_1D4--;
         this->visibleDuration--;

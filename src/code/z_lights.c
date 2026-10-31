@@ -62,6 +62,7 @@ void Lights_Reset(Lights* lights, u8 ambentR, u8 ambentG, u8 ambentB) {
 /*
  * Draws every light in the provided Lights group
  */
+//static u32 max_lights = 0;
 void Lights_Draw(Lights* lights, GraphicsContext* gfxCtx) {
     Light* light;
     s32 i;
@@ -70,7 +71,13 @@ void Lights_Draw(Lights* lights, GraphicsContext* gfxCtx) {
 
     gSPNumLights(POLY_OPA_DISP++, (u32)lights->numLights);
     gSPNumLights(POLY_XLU_DISP++, (u32)lights->numLights);
-
+    //if ((u32)lights->numLights > max_lights) { max_lights = (u32)lights->numLights;
+    //printf("current lights %d max lights %d\n", (u32)lights->numLights, max_lights);
+    //}
+//    if (max_lights > 5) {
+  //      printf("exceeded xmtrx light limit, exiting.\n");
+    //    exit(-1);
+    //}
     light = &lights->l.l[0];
     i = 0;
 
@@ -305,6 +312,8 @@ Lights* Lights_NewAndDraw(GraphicsContext* gfxCtx, u8 ambientR, u8 ambientG, u8 
     return lights;
 }
 
+#include "s30_platform.h"
+
 Lights* Lights_New(GraphicsContext* gfxCtx, u8 ambientR, u8 ambientG, u8 ambientB) {
     Lights* lights;
 
@@ -330,8 +339,6 @@ void Lights_GlowCheck(PlayState* play) {
             f32 cappedInvWDest;
             f32 wX;
             f32 wY;
-            s32 wZ;
-            s32 zBuf;
 
             pos.x = params->x;
             pos.y = params->y;
@@ -342,21 +349,8 @@ void Lights_GlowCheck(PlayState* play) {
             wY = multDest.y * cappedInvWDest;
 
             if ((multDest.z > 1.0f) && (fabsf(wX) < 1.0f) && (fabsf(wY) < 1.0f)) {
-                // Compute screen z value assuming the viewport scale and translation both have value G_MAXZ / 2
-                // The multiplication by 32 follows from how the RSP microcode computes the screen z value.
-                wZ = (s32)((multDest.z * cappedInvWDest) * ((G_MAXZ / 2) * 32)) + ((G_MAXZ / 2) * 32);
-                // Obtain the z-buffer value for the screen pixel corresponding to the center of the glow.
-                zBuf = gZBuffer[(s32)((wY * -(SCREEN_HEIGHT / 2)) + (SCREEN_HEIGHT / 2))]
-                               [(s32)((wX * (SCREEN_WIDTH / 2)) + (SCREEN_WIDTH / 2))]
-                       << 2;
-                if (1) {}
-                if (1) {}
-
-                // Compare the computed screen z value to the integer part of the z-buffer value in fixed point. If
-                // it is less than the value from the z-buffer the depth test passes and the glow can draw.
-                if (wZ < (Environment_ZBufValToFixedPoint(zBuf) >> 3)) {
-                    params->drawGlow = true;
-                }
+                // The z-buffer is on the GPU: depth-test the glow's point there
+                params->drawGlow = S30Gfx_DepthVisible((wX * 160) + 160, (wY * -120) + 120, multDest.z * cappedInvWDest);
             }
         }
         node = node->next;
@@ -382,6 +376,8 @@ void Lights_DrawGlow(PlayState* play) {
             if (params->drawGlow) {
                 f32 scale = SQ(params->radius) * 0.0000026f;
 
+                gDPSetCombineLERP(POLY_XLU_DISP++, 0, 0, 0, PRIMITIVE, TEXEL0, 0, PRIMITIVE, 0, 0, 0, 0, PRIMITIVE,
+                                  TEXEL0, 0, PRIMITIVE, 0);
                 gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, params->color[0], params->color[1], params->color[2], 50);
                 Matrix_Translate(params->x, params->y, params->z, MTXMODE_NEW);
                 Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);

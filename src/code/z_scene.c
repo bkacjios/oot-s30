@@ -80,16 +80,16 @@ void Object_InitContext(PlayState* play, ObjectContext* objectCtx) {
         spaceSize = 1000 * 1024 - OBJECT_SPACE_ADJUSTMENT;
     } else if (play2->sceneId == SCENE_GANON_BOSS) {
         if (gSaveContext.sceneLayer != 4) {
-            spaceSize = 1150 * 1024 - OBJECT_SPACE_ADJUSTMENT;
+            spaceSize = /* 1150 */1152 * 1024 - OBJECT_SPACE_ADJUSTMENT;
         } else {
             spaceSize = 1000 * 1024 - OBJECT_SPACE_ADJUSTMENT;
         }
     } else if (play2->sceneId == SCENE_SPIRIT_TEMPLE_BOSS) {
-        spaceSize = 1050 * 1024 - OBJECT_SPACE_ADJUSTMENT;
+        spaceSize = /* 1050 */1052 * 1024 - OBJECT_SPACE_ADJUSTMENT;
     } else if (play2->sceneId == SCENE_CHAMBER_OF_THE_SAGES) {
-        spaceSize = 1050 * 1024 - OBJECT_SPACE_ADJUSTMENT;
+        spaceSize = /* 1050 */1052 * 1024 - OBJECT_SPACE_ADJUSTMENT;
     } else if (play2->sceneId == SCENE_GANONDORF_BOSS) {
-        spaceSize = 1050 * 1024 - OBJECT_SPACE_ADJUSTMENT;
+        spaceSize = /* 1050 */1052 * 1024 - OBJECT_SPACE_ADJUSTMENT;
     } else {
         spaceSize = 1000 * 1024 - OBJECT_SPACE_ADJUSTMENT;
     }
@@ -270,7 +270,10 @@ BAD_RETURN(s32) Scene_CommandSpecialFiles(PlayState* play, SceneCmd* cmd) {
     }
 
     if (cmd->specialFiles.naviQuestHintFileId != NAVI_QUEST_HINTS_NONE) {
-        play->naviQuestHints = Play_LoadFile(play, &sNaviQuestHintFiles[cmd->specialFiles.naviQuestHintFileId - 1]);
+        extern u8 gOverworldNaviQuestHints[];
+        extern u8 gDungeonNaviQuestHints[];
+        static void* sNaviQuestHintData[] = { gOverworldNaviQuestHints, gDungeonNaviQuestHints };
+        play->naviQuestHints = sNaviQuestHintData[cmd->specialFiles.naviQuestHintFileId - 1];
     }
 }
 

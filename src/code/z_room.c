@@ -277,34 +277,62 @@ void Room_DrawCullable(PlayState* play, Room* room, u32 flags) {
     CLOSE_DISPS(play->state.gfxCtx, "../z_room.c", 430);
 }
 
-#define JPEG_MARKER 0xFFD8FFE0
-
 /**
  * If the data is JPEG, decode it and overwrite the initial data with the result.
  * Uses the depth frame buffer as temporary storage.
  */
 s32 Room_DecodeJpeg(void* data) {
     OSTime time;
+    u8* bytes = (u8*)data;
 
-    if (*(u32*)data == JPEG_MARKER) {
-        PRINTF(T("JPEGデータを展開します\n", "Expanding jpeg data\n"));
-        PRINTF(T("JPEGデータアドレス %08x\n", "Jpeg data address %08x\n"), data);
-        PRINTF(T("ワークバッファアドレス（Ｚバッファ）%08x\n", "Work buffer address (Z buffer) %08x\n"), gZBuffer);
+#if !PLATFORM_N64
+    // Asset data is compiled as u64 literals in N64 (big-endian) byte order.
+    // On little-endian hosts the bytes within each 8-byte word are reversed.
+    // Detect this by probing the first 8 bytes and un-swap the entire buffer
+    // so the JPEG byte stream is in the correct order for parsing.
+    // After decoding, the buffer is overwritten with host-byte-order RGBA,
+    // so subsequent calls will skip this branch.
+    {
+        u8 probe[8];
 
+        memcpy(probe, bytes, 8);
+
+        // 64-bit byte reverse of the probe
+        {
+            u8 t;
+
+            t = probe[0]; probe[0] = probe[7]; probe[7] = t;
+            t = probe[1]; probe[1] = probe[6]; probe[6] = t;
+            t = probe[2]; probe[2] = probe[5]; probe[5] = t;
+            t = probe[3]; probe[3] = probe[4]; probe[4] = t;
+        }
+
+        if (probe[0] == 0xFF && probe[1] == 0xD8 && probe[2] == 0xFF && probe[3] == 0xE0) {
+            u8* d = bytes;
+            size_t size = sizeof(u16[SCREEN_HEIGHT][SCREEN_WIDTH]);
+            size_t i;
+
+            for (i = 0; i + 7 < size; i += 8) {
+                u8 tmp;
+
+                tmp = d[i + 0]; d[i + 0] = d[i + 7]; d[i + 7] = tmp;
+                tmp = d[i + 1]; d[i + 1] = d[i + 6]; d[i + 6] = tmp;
+                tmp = d[i + 2]; d[i + 2] = d[i + 5]; d[i + 5] = tmp;
+                tmp = d[i + 3]; d[i + 3] = d[i + 4]; d[i + 4] = tmp;
+            }
+
+        }
+    }
+#endif
+
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF && bytes[3] == 0xE0) {
         time = osGetTime();
         if (!Jpeg_Decode(data, gZBuffer, gGfxSPTaskOutputBuffer, sizeof(gGfxSPTaskOutputBuffer))) {
             time = osGetTime() - time;
-
-            PRINTF(T("成功…だと思う。 time = %6.3f ms \n", "Success... I think. time = %6.3f ms\n"),
-                   OS_CYCLES_TO_USEC(time) / 1000.0f);
-            PRINTF(T("ワークバッファから元のアドレスに書き戻します。\n",
-                     "Writing back to original address from work buffer.\n"));
-            PRINTF(T("元のバッファのサイズが150キロバイト無いと暴走するでしょう。\n",
-                     "If the original buffer size isn't at least 150kB, it will be out of control.\n"));
-
+            PRINTF("Room_DecodeJpeg: decode OK, time=%.1fms\n", OS_CYCLES_TO_USEC(time) / 1000.0f);
             bcopy(gZBuffer, data, sizeof(u16[SCREEN_HEIGHT][SCREEN_WIDTH]));
         } else {
-            PRINTF(T("失敗！なんで〜\n", "Failure! Why is it ~\n"));
+            PRINTF("Room_DecodeJpeg: decode FAILED\n");
         }
     }
 

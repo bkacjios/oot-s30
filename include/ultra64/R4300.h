@@ -27,21 +27,39 @@
 #define E_VEC       (K0BASE + 0x180)        /* Gen. exception vector */
 
 /* Address conversion macros */
-#define K0_TO_K1(x)     (U32(x) | 0xA0000000)  /* kseg0 to kseg1 */
-#define K1_TO_K0(x)     (U32(x) & 0x9FFFFFFF)  /* kseg1 to kseg0 */
-#define K0_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)  /* kseg0 to physical */
-#define K1_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)  /* kseg1 to physical */
-#define KDM_TO_PHYS(x)  (U32(x) & 0x1FFFFFFF)  /* direct mapped to physical */
-#define PHYS_TO_K0(x)   (U32(x) | 0x80000000)  /* physical to kseg0 */
-#define PHYS_TO_K1(x)   (U32(x) | 0xA0000000)  /* physical to kseg1 */
+#ifdef LINUX
+/* On PC,  pass through the value */
+#define K0_TO_K1(x)     ((uintptr_t)(x))
+#define K1_TO_K0(x)     ((uintptr_t)(x))
+#define K0_TO_PHYS(x)   ((uintptr_t)(x))
+#define K1_TO_PHYS(x)   ((uintptr_t)(x))
+#define KDM_TO_PHYS(x)  ((uintptr_t)(x))
+#define PHYS_TO_K0(x)   ((uintptr_t)(x))
+#define PHYS_TO_K1(x)   ((uintptr_t)(x))
 
-/* Address predicates */
+#define IS_KSEG0(x)     (0)
+#define IS_KSEG1(x)     (0)
+#define IS_KSEGDM(x)    (0)
+#define IS_KSEG2(x)     (0)
+#define IS_KPTESEG(x)   (0)
+#define IS_KUSEG(x)     (1)
+
+#else
+/* Original N64 definitions */
+#define K0_TO_K1(x)     (U32(x) | 0xA0000000)
+#define K1_TO_K0(x)     (U32(x) & 0x9FFFFFFF)
+#define K0_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)
+#define K1_TO_PHYS(x)   (U32(x) & 0x1FFFFFFF)
+#define KDM_TO_PHYS(x)  (U32(x) & 0x1FFFFFFF)
+#define PHYS_TO_K0(x)   (U32(x) | 0x80000000)
+#define PHYS_TO_K1(x)   (U32(x) | 0xA0000000)
 #define IS_KSEG0(x)     (U32(x) >= K0BASE && U32(x) < K1BASE)
 #define IS_KSEG1(x)     (U32(x) >= K1BASE && U32(x) < K2BASE)
 #define IS_KSEGDM(x)    (U32(x) >= K0BASE && U32(x) < K2BASE)
 #define IS_KSEG2(x)     (U32(x) >= K2BASE && U32(x) < KPTE_SHDUBASE)
 #define IS_KPTESEG(x)   (U32(x) >= KPTE_SHDUBASE)
 #define IS_KUSEG(x)     (U32(x) < K0BASE)
+#endif
 
 /* TLB size constants */
 #define NTLBENTRIES 31      /* entry 31 is reserved by rdb */
@@ -177,7 +195,7 @@
 #define EXC_II      EXC_CODE(10)    /* Illegal Instruction */
 #define EXC_CPU     EXC_CODE(11)    /* CoProcessor Unusable */
 #define EXC_OV      EXC_CODE(12)    /* OVerflow */
-#define EXC_TRAP    EXC_CODE(13)    /* Trap exception */
+#define EXC_TRAP2   EXC_CODE(13)    /* Trap exception */
 #define EXC_VCEI    EXC_CODE(14)    /* Virt. Coherency on Inst. fetch */
 #define EXC_FPE     EXC_CODE(15)    /* Floating Point Exception */
 #define EXC_WATCH   EXC_CODE(23)    /* Watchpoint reference */

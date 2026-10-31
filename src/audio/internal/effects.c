@@ -2,6 +2,18 @@
 #include "attributes.h"
 #include "audio.h"
 
+#ifdef LINUX
+/* Read EnvelopePoint fields with byte-swap so that both instrument envelopes
+ * (in font data) and sequence-embedded envelopes (set via ASEQ_OP_LAYER_SETENVELOPE)
+ * are handled uniformly.  All envelope data stays in big-endian format in RAM;
+ * the swap happens here at read time. */
+#define ENV_DELAY(env, idx) ((s16)__builtin_bswap16((u16)(env)[(idx)].delay))
+#define ENV_ARG(env, idx)   ((s16)__builtin_bswap16((u16)(env)[(idx)].arg))
+#else
+#define ENV_DELAY(env, idx) ((env)[(idx)].delay)
+#define ENV_ARG(env, idx)   ((env)[(idx)].arg)
+#endif
+
 void Audio_SequenceChannelProcessSound(SequenceChannel* channel, s32 recalculateVolume, s32 applyBend) {
     f32 channelVolume;
     f32 chanFreqScale;
@@ -246,7 +258,7 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
         retry:;
             FALLTHROUGH;
         case ADSR_STATE_LOOP:
-            adsr->delay = adsr->envelope[adsr->envIndex].delay;
+            adsr->delay = ENV_DELAY(adsr->envelope, adsr->envIndex);
             switch (adsr->delay) {
                 case ADSR_DISABLE:
                     adsr->action.s.state = ADSR_STATE_DISABLED;
@@ -257,7 +269,7 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
                     break;
 
                 case ADSR_GOTO:
-                    adsr->envIndex = adsr->envelope[adsr->envIndex].arg;
+                    adsr->envIndex = ENV_ARG(adsr->envelope, adsr->envIndex);
                     goto retry;
 
                 case ADSR_RESTART:
@@ -269,7 +281,7 @@ f32 Audio_AdsrUpdate(AdsrState* adsr) {
                     if (adsr->delay == 0) {
                         adsr->delay = 1;
                     }
-                    adsr->target = adsr->envelope[adsr->envIndex].arg / 32767.0f;
+                    adsr->target = ENV_ARG(adsr->envelope, adsr->envIndex) / 32767.0f;
                     adsr->target = SQ(adsr->target);
                     adsr->velocity = (adsr->target - adsr->current) / adsr->delay;
                     adsr->action.s.state = ADSR_STATE_FADE;

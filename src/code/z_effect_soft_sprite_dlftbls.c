@@ -1,7 +1,8 @@
 #include "segment_symbols.h"
 #include "effect.h"
 
-// Linker symbol declarations (used in the table below)
+// Linker symbol declarations (used in the table below) - NOT needed for PC
+#ifndef LINUX
 #define DEFINE_EFFECT_SS(name, _1) DECLARE_OVERLAY_SEGMENT(name)
 #define DEFINE_EFFECT_SS_UNSET(_0)
 
@@ -9,6 +10,7 @@
 
 #undef DEFINE_EFFECT_SS
 #undef DEFINE_EFFECT_SS_UNSET
+#endif
 
 // Profile declarations (also used in the table below)
 #define DEFINE_EFFECT_SS(name, _1) extern EffectSsProfile name##_Profile;
@@ -20,15 +22,24 @@
 #undef DEFINE_EFFECT_SS_UNSET
 
 // Effect SS Overlay Table definition
-#define DEFINE_EFFECT_SS(name, _1)                                                                          \
-    {                                                                                                       \
-        ROM_FILE(ovl_##name), _ovl_##name##SegmentStart, _ovl_##name##SegmentEnd, NULL, &name##_Profile, 1, \
-    },
+#ifdef LINUX
 
-#define DEFINE_EFFECT_SS_UNSET(_0)                 \
-    {                                              \
-        ROM_FILE_UNSET, NULL, NULL, NULL, NULL, 0, \
-    },
+// PC: All effects compiled in, no overlay loading needed
+#define DEFINE_EFFECT_SS(name, _1) \
+    { ROM_FILE_UNSET, NULL, NULL, NULL, &name##_Profile, 1, },
+
+#define DEFINE_EFFECT_SS_UNSET(_0) \
+    { ROM_FILE_UNSET, NULL, NULL, NULL, NULL, 0, },
+
+#else
+
+#define DEFINE_EFFECT_SS(name, _1) \
+    { ROM_FILE(ovl_##name), _ovl_##name##SegmentStart, _ovl_##name##SegmentEnd, NULL, &name##_Profile, 1, },
+
+#define DEFINE_EFFECT_SS_UNSET(_0) \
+    { ROM_FILE_UNSET, NULL, NULL, NULL, NULL, 0, },
+
+#endif
 
 EffectSsOverlay gEffectSsOverlayTable[] = {
 #include "tables/effect_ss_table.h"

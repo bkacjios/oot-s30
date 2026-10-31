@@ -68,6 +68,14 @@ typedef enum DoAction {
     /* 0x1D */ DO_ACTION_MAX
 } DoAction;
 
+// mapPalette is a TLUT the renderer reads as little-endian u64s (N64 byte i
+// at i ^ 7, like texture data from the asset build), so writes swizzle too
+#ifdef LINUX
+#define MAP_PAL_IDX(i) ((i) ^ 7)
+#else
+#define MAP_PAL_IDX(i) (i)
+#endif
+
 typedef struct InterfaceContext {
     /* 0x0000 */ View   view;
     /* 0x0128 */ Vtx*   actionVtx;
@@ -76,7 +84,7 @@ typedef struct InterfaceContext {
     /* 0x0134 */ u8*    doActionSegment;
     /* 0x0138 */ u8*    iconItemSegment;
     /* 0x013C */ u8*    mapSegment;
-    /* 0x0140 */ char   mapPalette[32];
+    /* 0x0140 */ char   mapPalette[32] __attribute__((aligned(8))); // indexed with MAP_PAL_IDX
     /* 0x0160 */ DmaRequest dmaRequest_160;
     /* 0x0180 */ DmaRequest dmaRequest_180;
     /* 0x01A0 */ char   unk_1A0[0x20];
@@ -147,8 +155,21 @@ typedef struct InterfaceContext {
 /**
  * Button HUD positions and colors
  */
+#ifdef LINUX
+/* PocketGo S30: the buttons sit where they are on the device (s30/input.c),
+   drawn SNES style. Face diamond of equal 27 px buttons, about 3 px apart:
+   B on the left (Y), A at the bottom (B), C-left on top (X), C-down on the
+   right (A). C-right (R1) is a shoulder pill in the top right corner, C-up
+   (Select) a slanted pill top left (z_parameter.c). A_BUTTON_X/Y is the
+   corner of the A button's A_BUTTON_VIEW square 3D view. */
+#define A_BUTTON_X 239
+#define A_BUTTON_Y 38
+#define A_BUTTON_VIEW 40 // A disc 25.5 px: its sharp 3D edge reads larger than the 27 px sprites
+#else
+#define A_BUTTON_VIEW 45
 #define A_BUTTON_X 186
 #define A_BUTTON_Y 9
+#endif
 
 #if !PLATFORM_GC
 #define A_BUTTON_R 90
@@ -160,8 +181,13 @@ typedef struct InterfaceContext {
 #define A_BUTTON_B 50
 #endif
 
+#ifdef LINUX
+#define B_BUTTON_X 223
+#define B_BUTTON_Y 23
+#else
 #define B_BUTTON_X 160
 #define B_BUTTON_Y 17
+#endif
 
 #if !PLATFORM_GC
 #define B_BUTTON_R 0
@@ -173,6 +199,24 @@ typedef struct InterfaceContext {
 #define B_BUTTON_B 30
 #endif
 
+#ifdef LINUX
+#define C_LEFT_BUTTON_X 245
+#define C_LEFT_BUTTON_Y 2
+
+#define C_DOWN_BUTTON_X 267
+#define C_DOWN_BUTTON_Y 23
+
+// Shoulder pill: corner and size; its item icon is centred, S30_SHOULDER_ICON px
+#define C_RIGHT_BUTTON_X 274
+#define C_RIGHT_BUTTON_Y 0
+#define S30_SHOULDER_W 44
+#define S30_SHOULDER_H 20
+#define S30_SHOULDER_ICON 20
+
+// Select pill: centre (the "Navi" label is centred on it)
+#define C_UP_BUTTON_X 210
+#define C_UP_BUTTON_Y 15
+#else
 #define C_LEFT_BUTTON_X 227
 #define C_LEFT_BUTTON_Y 18
 
@@ -184,6 +228,7 @@ typedef struct InterfaceContext {
 
 #define C_UP_BUTTON_X 254
 #define C_UP_BUTTON_Y 16
+#endif
 
 #if !PLATFORM_GC
 #define START_BUTTON_R 200

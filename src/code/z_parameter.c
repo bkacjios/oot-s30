@@ -27,6 +27,8 @@
 
 #include "assets/textures/parameter_static/parameter_static.h"
 #include "assets/textures/do_action_static/do_action_static.h"
+
+extern void gfx_texture_cache_invalidate(void* addr);
 #include "assets/textures/icon_item_static/icon_item_static.h"
 
 #pragma increment_block_number "gc-jp:128 gc-jp-ce:128 gc-jp-mq:128 gc-us:128 gc-us-mq:128 ntsc-1.0:128 ntsc-1.1:128" \
@@ -1346,6 +1348,7 @@ void Interface_LoadItemIcon1(PlayState* play, u16 button) {
                       GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[button]), ITEM_ICON_SIZE, 0,
                       &interfaceCtx->loadQueue, NULL, "../z_parameter.c", 1171);
     osRecvMesg(&interfaceCtx->loadQueue, NULL, OS_MESG_BLOCK);
+    gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (button * ITEM_ICON_SIZE));
 }
 
 void Interface_LoadItemIcon2(PlayState* play, u16 button) {
@@ -1356,6 +1359,7 @@ void Interface_LoadItemIcon2(PlayState* play, u16 button) {
                       GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[button]), ITEM_ICON_SIZE, 0,
                       &interfaceCtx->loadQueue, NULL, "../z_parameter.c", 1193);
     osRecvMesg(&interfaceCtx->loadQueue, NULL, OS_MESG_BLOCK);
+    gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (button * ITEM_ICON_SIZE));
 }
 
 void func_80084BF4(PlayState* play, u16 flag) {
@@ -2165,9 +2169,19 @@ void Interface_LoadActionLabel(InterfaceContext* interfaceCtx, u16 action, s16 l
                           (uintptr_t)_do_action_staticSegmentRomStart + (action * DO_ACTION_TEX_SIZE),
                           DO_ACTION_TEX_SIZE, 0, &interfaceCtx->loadQueue, NULL, "../z_parameter.c", 2145);
         osRecvMesg(&interfaceCtx->loadQueue, NULL, OS_MESG_BLOCK);
+        // Every label lands at the same fixed address, so the address-keyed texture
+        // cache would keep serving whichever one was decoded there first -- the
+        // A-button label then reads wrong for the rest of the scene.
+        // Interface_LoadActionLabelB already does this; this path was missed.
+        gfx_texture_cache_invalidate(interfaceCtx->doActionSegment + (loadOffset * DO_ACTION_TEX_SIZE));
     } else {
+        void* labelDst;
+
         gSegments[7] = OS_K0_TO_PHYSICAL(interfaceCtx->doActionSegment);
-        func_80086D5C(SEGMENTED_TO_VIRTUAL(sDoActionTextures[loadOffset]), DO_ACTION_TEX_SIZE / 4);
+        labelDst = SEGMENTED_TO_VIRTUAL(sDoActionTextures[loadOffset]);
+        func_80086D5C(labelDst, DO_ACTION_TEX_SIZE / 4);
+        // Blanking the label rewrites the same buffer: invalidate it too.
+        gfx_texture_cache_invalidate(labelDst);
     }
 }
 
@@ -2228,6 +2242,7 @@ void Interface_LoadActionLabelB(PlayState* play, u16 action) {
                       (uintptr_t)_do_action_staticSegmentRomStart + (action * DO_ACTION_TEX_SIZE), DO_ACTION_TEX_SIZE,
                       0, &interfaceCtx->loadQueue, NULL, "../z_parameter.c", 2228);
     osRecvMesg(&interfaceCtx->loadQueue, NULL, OS_MESG_BLOCK);
+    gfx_texture_cache_invalidate(interfaceCtx->doActionSegment + DO_ACTION_TEX_SIZE);
 
     interfaceCtx->unk_1FA = true;
 }
@@ -2801,6 +2816,85 @@ void Interface_DrawActionLabel(GraphicsContext* gfxCtx, void* texture) {
     CLOSE_DISPS(gfxCtx, "../z_parameter.c", 2829);
 }
 
+#ifdef LINUX
+/* S30 HUD (interface.h): pill buttons cut from the round button texture
+   (32x32): the left cap is its left half, the middle its centre column
+   stretched, the right cap its right half */
+
+// C-right as a shoulder button: a horizontal pill. The button texture is the
+// loaded tile.
+static Gfx* Interface_DrawShoulderPill(Gfx* gfx) {
+    s32 x = C_RIGHT_BUTTON_X;
+    s32 y = C_RIGHT_BUTTON_Y;
+    s32 w = S30_SHOULDER_W;
+    s32 h = S30_SHOULDER_H;
+    s32 scale = (32 << 10) / h; // texels per pixel
+
+    gSPTextureRectangle(gfx++, x << 2, y << 2, (x + h / 2) << 2, (y + h) << 2, G_TX_RENDERTILE, 0, 0, scale, scale);
+    gSPTextureRectangle(gfx++, (x + h / 2) << 2, y << 2, (x + w - h / 2) << 2, (y + h) << 2, G_TX_RENDERTILE,
+                        16 << 5, 0, 0, scale);
+    gSPTextureRectangle(gfx++, (x + w - h / 2) << 2, y << 2, (x + w) << 2, (y + h) << 2, G_TX_RENDERTILE, 16 << 5,
+                        0, scale, scale);
+    return gfx;
+}
+
+void func_8008A8B8(PlayState* play, s32 topY, s32 bottomY, s32 leftX, s32 rightX);
+
+// C-up as Select: a pill slanted like the SNES Select button, drawn in 3D to
+// rotate it. Uses the current prim color and combiner.
+void func_8008A994(InterfaceContext* interfaceCtx);
+
+static void Interface_DrawSelectPill(PlayState* play) {
+    // A 30 px view at the action button's depth (XREG(18)): 1.46 units per px.
+    // Pill 32 x 14 units (22 x 10 px), caps 7 units wide.
+    static const s16 sColX[4] = { -16, -9, 9, 16 };
+    static const s16 sColS[4] = { 0, 16 << 5, 16 << 5, 32 << 5 };
+    Vtx* vtx = GRAPH_ALLOC(play->state.gfxCtx, 8 * sizeof(Vtx));
+    s32 i;
+
+    OPEN_DISPS(play->state.gfxCtx, "../z_parameter.c", 0);
+
+    for (i = 0; i < 8; i++) {
+        Vtx* v = &vtx[i];
+
+        v->v.ob[0] = sColX[i / 2];
+        v->v.ob[1] = (i & 1) ? -7 : 7;
+        v->v.ob[2] = 0;
+        v->v.flag = 0;
+        v->v.tc[0] = sColS[i / 2];
+        v->v.tc[1] = (i & 1) ? (32 << 5) : 0;
+        v->v.cn[0] = v->v.cn[1] = v->v.cn[2] = v->v.cn[3] = 255;
+    }
+
+    func_8008A8B8(play, R_C_UP_BTN_Y - 15, R_C_UP_BTN_Y + 15, R_C_UP_BTN_X - 15, R_C_UP_BTN_X + 15);
+    gSPTexture(OVERLAY_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
+    gSPClearGeometryMode(OVERLAY_DISP++, G_CULL_BOTH | G_LIGHTING | G_FOG);
+    gDPSetOtherMode(OVERLAY_DISP++,
+                    G_AD_DISABLE | G_CD_MAGICSQ | G_CK_NONE | G_TC_FILT | G_TF_BILERP | G_TT_NONE | G_TL_TILE |
+                        G_TD_CLAMP | G_TP_NONE | G_CYC_1CYCLE | G_PM_NPRIMITIVE, // the label after is a rectangle
+                    G_AC_NONE | G_ZS_PRIM | G_RM_XLU_SURF | G_RM_XLU_SURF2);
+    Matrix_Translate(0.0f, 0.0f, XREG(18) / 10.0f, MTXMODE_NEW);
+    Matrix_RotateZ(0.45f, MTXMODE_APPLY); // right end up, about 26 degrees
+    MATRIX_FINALIZE_AND_LOAD(OVERLAY_DISP++, play->state.gfxCtx, "../z_parameter.c", 0);
+    gDPLoadTextureBlock(OVERLAY_DISP++, gButtonBackgroundTex, G_IM_FMT_IA, G_IM_SIZ_8b, 32, 32, 0,
+                        G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
+                        G_TX_NOLOD);
+    gSPVertex(OVERLAY_DISP++, vtx, 8, 0);
+    // Columns of (top, bottom) vertices: caps and middle as quads
+    gSP2Triangles(OVERLAY_DISP++, 0, 1, 3, 0, 0, 3, 2, 0);
+    gSP2Triangles(OVERLAY_DISP++, 2, 3, 5, 0, 2, 5, 4, 0);
+    gSP2Triangles(OVERLAY_DISP++, 4, 5, 7, 0, 4, 7, 6, 0);
+    gDPPipeSync(OVERLAY_DISP++);
+
+    CLOSE_DISPS(play->state.gfxCtx, "../z_parameter.c", 0);
+
+    // Back to the full-screen ortho view (scissor) and the rectangles' modes:
+    // the C-button icons drawn next would be clipped to this 30 px view
+    func_8008A994(&play->interfaceCtx);
+    Gfx_SetupDL_39Overlay(play->state.gfxCtx);
+}
+#endif
+
 void Interface_DrawItemButtons(PlayState* play) {
     static void* cUpLabelTextures[] = LANGUAGE_ARRAY(gNaviCUpJPNTex, gNaviCUpENGTex, gNaviCUpENGTex, gNaviCUpENGTex);
 #if OOT_VERSION >= PAL_1_0
@@ -2846,9 +2940,13 @@ void Interface_DrawItemButtons(PlayState* play) {
     // C-Right Button Color & Texture
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, R_C_BTN_COLOR(0), R_C_BTN_COLOR(1), R_C_BTN_COLOR(2),
                     interfaceCtx->cRightAlpha);
+#ifdef LINUX
+    OVERLAY_DISP = Interface_DrawShoulderPill(OVERLAY_DISP);
+#else
     gSPTextureRectangle(OVERLAY_DISP++, R_ITEM_BTN_X(3) << 2, R_ITEM_BTN_Y(3) << 2,
                         (R_ITEM_BTN_X(3) + R_ITEM_BTN_WIDTH(3)) << 2, (R_ITEM_BTN_Y(3) + R_ITEM_BTN_WIDTH(3)) << 2,
                         G_TX_RENDERTILE, 0, 0, R_ITEM_BTN_DD(3) << 1, R_ITEM_BTN_DD(3) << 1);
+#endif
 
     if (!IS_PAUSE_STATE_GAMEOVER(pauseCtx)) {
         if (IS_PAUSED(&play->pauseCtx)) {
@@ -2921,8 +3019,12 @@ void Interface_DrawItemButtons(PlayState* play) {
 
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, R_C_BTN_COLOR(0), R_C_BTN_COLOR(1), R_C_BTN_COLOR(2), temp);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+#ifdef LINUX
+            Interface_DrawSelectPill(play);
+#else
             gSPTextureRectangle(OVERLAY_DISP++, R_C_UP_BTN_X << 2, R_C_UP_BTN_Y << 2, (R_C_UP_BTN_X + 16) << 2,
                                 (R_C_UP_BTN_Y + 16) << 2, G_TX_RENDERTILE, 0, 0, 2 << 10, 2 << 10);
+#endif
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, temp);
             gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 0, 0);
@@ -2968,6 +3070,15 @@ void Interface_DrawItemButtons(PlayState* play) {
                                 interfaceCtx->cRightAlpha);
             }
 
+#ifdef LINUX
+            if (temp == 3) {
+                // On the shoulder pill: at the icon's place and size
+                OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, ((u8*)gButtonBackgroundTex + ((32 * 32) * (temp + 1))),
+                                              32, 32, R_ITEM_ICON_X(3), R_ITEM_ICON_Y(3), R_ITEM_ICON_WIDTH(3),
+                                              R_ITEM_ICON_WIDTH(3), R_ITEM_ICON_DD(3) << 1, R_ITEM_ICON_DD(3) << 1);
+                continue;
+            }
+#endif
             OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, ((u8*)gButtonBackgroundTex + ((32 * 32) * (temp + 1))), 32, 32,
                                           R_ITEM_BTN_X(temp), R_ITEM_BTN_Y(temp), R_ITEM_BTN_WIDTH(temp),
                                           R_ITEM_BTN_WIDTH(temp), R_ITEM_BTN_DD(temp) << 1, R_ITEM_BTN_DD(temp) << 1);
@@ -3062,6 +3173,7 @@ void Interface_DrawActionButton(PlayState* play) {
 
     MATRIX_FINALIZE_AND_LOAD(OVERLAY_DISP++, play->state.gfxCtx, "../z_parameter.c", 3177);
     gSPVertex(OVERLAY_DISP++, &interfaceCtx->actionVtx[0], 4, 0);
+//    printf("interfaceCtx->actionVtx[0].z %d translate %f\n", interfaceCtx->actionVtx[0].v.ob[2], XREG(18) / 10.0f);
 
     gDPLoadTextureBlock(OVERLAY_DISP++, gButtonBackgroundTex, G_IM_FMT_IA, G_IM_SIZ_8b, 32, 32, 0,
                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
@@ -3411,14 +3523,14 @@ void Interface_Draw(PlayState* play) {
 
         // A Button
         Gfx_SetupDL_42Overlay(play->state.gfxCtx);
-        func_8008A8B8(play, R_A_BTN_Y, R_A_BTN_Y + 45, R_A_BTN_X, R_A_BTN_X + 45);
+        func_8008A8B8(play, R_A_BTN_Y, R_A_BTN_Y + A_BUTTON_VIEW, R_A_BTN_X, R_A_BTN_X + A_BUTTON_VIEW);
         gSPClearGeometryMode(OVERLAY_DISP++, G_CULL_BOTH);
         gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
         gDPSetPrimColor(OVERLAY_DISP++, 0, 0, R_A_BTN_COLOR(0), R_A_BTN_COLOR(1), R_A_BTN_COLOR(2),
                         interfaceCtx->aAlpha);
         Interface_DrawActionButton(play);
         gDPPipeSync(OVERLAY_DISP++);
-        func_8008A8B8(play, R_A_ICON_Y, R_A_ICON_Y + 45, R_A_ICON_X, R_A_ICON_X + 45);
+        func_8008A8B8(play, R_A_ICON_Y, R_A_ICON_Y + A_BUTTON_VIEW, R_A_ICON_X, R_A_ICON_X + A_BUTTON_VIEW);
         gSPSetGeometryMode(OVERLAY_DISP++, G_CULL_BACK);
         gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                           PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);

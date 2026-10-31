@@ -1,5 +1,5 @@
 #include "dma.h"
-
+// May need to modify this later  - Bruce
 // Linker symbol declarations (used in the table below)
 #define DEFINE_DMA_ENTRY(name, _1)        \
     extern u8 _##name##SegmentRomStart[]; \

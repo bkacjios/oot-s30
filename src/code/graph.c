@@ -28,6 +28,9 @@
 #include "z_game_dlftbls.h"
 #include "audio.h"
 #include "save.h"
+#ifdef LINUX
+#include "s30_audio.h"
+#endif
 #include "play_state.h"
 
 #define GFXPOOL_HEAD_MAGIC 0x1234
@@ -45,6 +48,14 @@ OSTime sGraphPrevUpdateEndTime;
  * The time at which the previous graphics task was scheduled to run.
  */
 OSTime sGraphPrevTaskTimeStart;
+
+#ifdef LINUX
+static GfxPool sGfxPoolLinux;
+static GfxPool* Graph_GetPool(int idx) {
+    (void)idx;
+    return &sGfxPoolLinux;
+}
+#endif
 
 #if DEBUG_FEATURES
 FaultClient sGraphFaultClient;
@@ -127,7 +138,12 @@ void Graph_UCodeFaultClient(Gfx* workBuf) {
 #endif
 
 void Graph_InitTHGA(GraphicsContext* gfxCtx) {
+#ifdef LINUX
+    GfxPool* pool = Graph_GetPool(gfxCtx->gfxPoolIdx);
+
+#else
     GfxPool* pool = &gGfxPools[gfxCtx->gfxPoolIdx & 1];
+#endif
 
     pool->headMagic = GFXPOOL_HEAD_MAGIC;
     pool->tailMagic = GFXPOOL_TAIL_MAGIC;
@@ -191,7 +207,30 @@ void Graph_Destroy(GraphicsContext* gfxCtx) {
 #endif
 }
 
+#ifdef LINUX
+#include "s30_platform.h"
+#endif
+
 void Graph_TaskSet00(GraphicsContext* gfxCtx) {
+#ifdef LINUX
+    extern void pc_process_displaylist(Gfx* dl);
+
+    /* Chain is: work → polyOpa → polyXlu → overlay
+       The geometry is in polyOpa/polyXlu, work is just setup */
+
+    // The previous frame is complete: the callback (sun and light glow depth
+    // tests) reads its z-buffer, as on the N64
+    S30Display_SetUpdateRate(R_UPDATE_RATE);
+    S30Gfx_BeginDepthTests();
+    if (gfxCtx->callback != NULL) {
+        gfxCtx->callback(gfxCtx, gfxCtx->callbackParam);
+    }
+
+    /* Process from workBuffer - the branches at the end will chain everything */
+    pc_process_displaylist(gfxCtx->workBuffer);
+    return;
+#endif
+
 #if DEBUG_FEATURES
     static Gfx* sPrevTaskWorkBuffer = NULL;
 #endif
@@ -322,7 +361,12 @@ void Graph_TaskSet00(GraphicsContext* gfxCtx) {
     Sched_Notify(&gScheduler);
 }
 
-void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
+/* extern Gfx *OPAdl;
+extern Gfx *XLUdl;
+extern Gfx *OVLdl;
+ */
+
+ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
     u32 problem;
 
     gameState->inPreNMIState = false;
@@ -354,7 +398,9 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 #endif
 
     OPEN_DISPS(gfxCtx, "../graph.c", 999);
-
+/* OPAdl = gfxCtx->polyOpaBuffer;
+XLUdl = gfxCtx->polyXluBuffer;
+OVLdl = gfxCtx->overlayBuffer; */
     gSPBranchList(WORK_DISP++, gfxCtx->polyOpaBuffer);
     gSPBranchList(POLY_OPA_DISP++, gfxCtx->polyXluBuffer);
     gSPBranchList(POLY_XLU_DISP++, gfxCtx->overlayBuffer);
@@ -398,7 +444,11 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
     problem = false;
 
     {
-        GfxPool* pool = &gGfxPools[gfxCtx->gfxPoolIdx & 1];
+    #ifdef LINUX
+            GfxPool* pool = Graph_GetPool(gfxCtx->gfxPoolIdx);
+    #else
+            GfxPool* pool = &gGfxPools[gfxCtx->gfxPoolIdx & 1];
+    #endif
 
         if (pool->headMagic != GFXPOOL_HEAD_MAGIC) {
             //! @bug (?) : "problem = true;" may be missing
@@ -444,6 +494,7 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     Audio_Update();
 
+
     {
         OSTime timeNow = osGetTime();
         s32 pad;
@@ -478,15 +529,21 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 #endif
 }
 
+
 void Graph_ThreadEntry(void* arg0) {
     GraphicsContext gfxCtx;
     GameState* gameState;
     u32 size;
     GameStateOverlay* nextOvl = &gGameStateOverlayTable[GAMESTATE_SETUP];
     GameStateOverlay* ovl;
-
     PRINTF(T("グラフィックスレッド実行開始\n", "Start graphic thread execution\n"));
     Graph_Init(&gfxCtx);
+
+#ifdef LINUX
+    if (gS30EnableAudio) {
+        S30Audio_Init();
+    }
+#endif
 
     while (nextOvl != NULL) {
         ovl = nextOvl;

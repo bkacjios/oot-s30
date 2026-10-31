@@ -339,12 +339,23 @@ void EnGanonMant_UpdateVertices(EnGanonMant* this) {
     s16 k;
     Vec3f up;
     Vec3f normal;
-
-    if (this->frameTimer % 2 != 0) {
-        vertices = SEGMENTED_TO_VIRTUAL(gMant1Vtx);
-    } else {
-        vertices = SEGMENTED_TO_VIRTUAL(gMant2Vtx);
-    }
+    // Note - This is gonna likely be a issue with many other overlays. 
+    //  segmented addresses from loaded asset files should be fine. SEGMENTED_TO_VIRTUAL corrupts
+    // overlays with static vertex data modified at runtime
+    // will have the same issue - search for SEGMENTED_TO_VIRTUAL on static Vtx arrays.
+    #ifdef LINUX
+        if (this->frameTimer % 2 != 0) {
+            vertices = gMant1Vtx;
+        } else {
+            vertices = gMant2Vtx;
+        }
+    #else
+        if (this->frameTimer % 2 != 0) {
+            vertices = SEGMENTED_TO_VIRTUAL(gMant1Vtx);
+        } else {
+            vertices = SEGMENTED_TO_VIRTUAL(gMant2Vtx);
+        }
+    #endif
     up.x = 0.0f;
     up.y = 30.0f;
     up.z = 0.0f;

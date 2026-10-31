@@ -951,7 +951,9 @@ void KaleidoScope_SetupPlayerPreRender(PlayState* play) {
 
     PreRender_SetValues(&sPlayerPreRender, PAUSE_EQUIP_PLAYER_WIDTH, PAUSE_EQUIP_PLAYER_HEIGHT, fbuf, NULL);
     PreRender_SaveFramebuffer(&sPlayerPreRender, &gfx);
+#ifndef LINUX // the renderer has no coverage image: ApplyFilters is skipped
     PreRender_DrawCoverage(&sPlayerPreRender, &gfx);
+#endif
 
     gSPEndDisplayList(gfx++);
     Gfx_Close(gfxRef, gfx);
@@ -963,8 +965,10 @@ void KaleidoScope_SetupPlayerPreRender(PlayState* play) {
 }
 
 void KaleidoScope_ProcessPlayerPreRender(void) {
+#ifndef LINUX
     Sleep_Msec(50);
     PreRender_ApplyFilters(&sPlayerPreRender);
+#endif
     PreRender_Destroy(&sPlayerPreRender);
 }
 
@@ -1138,6 +1142,7 @@ void KaleidoScope_HandlePageToggles(PauseContext* pauseCtx, Input* input) {
     }
 }
 
+void KaleidoScope_UpdateCursorVtx(PlayState* play);
 void KaleidoScope_DrawCursor(PlayState* play, u16 pageIndex) {
     PauseContext* pauseCtx = &play->pauseCtx;
     s32 pad;
@@ -1164,6 +1169,14 @@ void KaleidoScope_DrawCursor(PlayState* play, u16 pageIndex) {
                             sCursorColors[pauseCtx->cursorColorSet >> 2][1],
                             sCursorColors[pauseCtx->cursorColorSet >> 2][2], 255);
             gDPSetEnvColor(POLY_OPA_DISP++, D_8082AB8C, D_8082AB90, D_8082AB94, 255);
+            /* Expand the cursor corner quads from the anchor vertex here. On N64
+               this runs in KaleidoScope_Update and patches the PREVIOUS frame's
+               (already-submitted) cursorVtx before the RSP reads it -- the draw
+               below re-allocates and zeroes cursorVtx every frame and only the
+               anchor is written before this point. The renderer walks the DL at
+               the end of the same frame, so the N64 timing trick leaves 3 of 4
+               corners at 0. */
+            KaleidoScope_UpdateCursorVtx(play);
             gSPVertex(POLY_OPA_DISP++, pauseCtx->cursorVtx, 16, 0);
 
             for (i = j = 0; i < 4; i++, j += 4) {
@@ -3692,11 +3705,9 @@ void KaleidoScope_Update(PlayState* play) {
             pauseCtx->stickAdjX = input->rel.stick_x;
             pauseCtx->stickAdjY = input->rel.stick_y;
 
-            KaleidoScope_UpdateCursorVtx(play);
             KaleidoScope_HandlePageToggles(pauseCtx, input);
         } else if ((pauseCtx->pageIndex == PAUSE_QUEST) && ((pauseCtx->mainState < PAUSE_MAIN_STATE_3) ||
                                                             (pauseCtx->mainState == PAUSE_MAIN_STATE_SONG_PROMPT))) {
-            KaleidoScope_UpdateCursorVtx(play);
         }
 
         if (pauseCtx->state == PAUSE_STATE_MAIN) {
@@ -3778,8 +3789,8 @@ void KaleidoScope_Update(PlayState* play) {
                     DMA_REQUEST_SYNC(pauseCtx->iconItemAltSegment, (uintptr_t)_icon_item_dungeon_staticSegmentRomStart,
                                      size2, "../z_kaleido_scope_PAL.c", 3712);
 
-                    interfaceCtx->mapPalette[28] = 6;
-                    interfaceCtx->mapPalette[29] = 99;
+                    interfaceCtx->mapPalette[MAP_PAL_IDX(28)] = 6;
+                    interfaceCtx->mapPalette[MAP_PAL_IDX(29)] = 99;
                     KaleidoScope_UpdateDungeonMap(play);
                     break;
 

@@ -188,7 +188,11 @@ u16 JpegDecoder_ReadBits(u8 len) {
 
     ret = sJpegBitStreamCurWord << sJpegBitStreamBitIdx;
     temp = ret;
+#if PLATFORM_N64
     ret = temp >> -len;
+#else
+    ret = (u32)temp >> (32 - len);
+#endif
     sJpegBitStreamBitIdx += len;
     return ret;
 }

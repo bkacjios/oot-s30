@@ -135,7 +135,39 @@ ALIGNED(8) u8 sGfxPrintFontData[(16 * 256) / 2] = {
 static u8 sDefaultSpecialFlags;
 #endif
 
+#ifdef LINUX
+// Pre-swap gfxprint arrays into N64 64-bit big-endian format so they can flow
+// through the normal texture path (which applies swap_bytes_64 to undo it).
+// Without this, compiled C arrays are in host byte order and get mangled.
+static int sGfxPrintByteOrderReady = 0;
+
+static void swap64(u8* data, size_t size) {
+    for (size_t i = 0; i + 7 < size; i += 8) {
+        u8 tmp;
+        tmp = data[i+0]; data[i+0] = data[i+7]; data[i+7] = tmp;
+        tmp = data[i+1]; data[i+1] = data[i+6]; data[i+6] = tmp;
+        tmp = data[i+2]; data[i+2] = data[i+5]; data[i+5] = tmp;
+        tmp = data[i+3]; data[i+3] = data[i+4]; data[i+4] = tmp;
+    }
+}
+
+static void GfxPrint_InitByteOrder(void) {
+    if (sGfxPrintByteOrderReady)
+        return;
+    // Font and rainbow texture data (u8 arrays)
+    swap64(sGfxPrintFontData, sizeof(sGfxPrintFontData));
+    swap64(sGfxPrintRainbowData, sizeof(sGfxPrintRainbowData));
+    // TLUT arrays (u16 - need byte reversal within 8-byte groups)
+    swap64((u8*)sGfxPrintFontTLUT, sizeof(sGfxPrintFontTLUT));
+    swap64((u8*)sGfxPrintRainbowTLUT, sizeof(sGfxPrintRainbowTLUT));
+    sGfxPrintByteOrderReady = 1;
+}
+#endif
+
 void GfxPrint_Setup(GfxPrint* this) {
+#ifdef LINUX
+    GfxPrint_InitByteOrder();
+#endif
     s32 width;
     s32 height;
     s32 i;

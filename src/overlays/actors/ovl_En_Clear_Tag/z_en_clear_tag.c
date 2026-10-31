@@ -328,6 +328,7 @@ void EnClearTag_CalculateFloorTangent(EnClearTag* this) {
  * cutscene. The cutscene stops playing when the Arwing is a specified distance from the starting point.
  */
 void EnClearTag_Update(Actor* thisx, PlayState* play2) {
+#if 0
     u8 hasAtHit = false;
     s16 i;
     s16 xRotationTarget;
@@ -690,6 +691,7 @@ void EnClearTag_Update(Actor* thisx, PlayState* play2) {
 
         EnClearTag_UpdateEffects(play);
     }
+#endif
 }
 
 /**
@@ -698,6 +700,7 @@ void EnClearTag_Update(Actor* thisx, PlayState* play2) {
  * Arwing clear tag types will draw the Arwing, the backfire, and a shadow.
  */
 void EnClearTag_Draw(Actor* thisx, PlayState* play) {
+#if 1
     s32 pad;
     EnClearTag* this = (EnClearTag*)thisx;
 
@@ -777,6 +780,7 @@ void EnClearTag_Draw(Actor* thisx, PlayState* play) {
     }
 
     CLOSE_DISPS(play->state.gfxCtx, "../z_en_clear_tag.c", 1119);
+#endif
 }
 
 /**

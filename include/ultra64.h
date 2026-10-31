@@ -1,8 +1,41 @@
 #ifndef ULTRA64_H
 #define ULTRA64_H
 
+#ifdef LINUX
+#include <assert.h>
+#ifndef ASSET_BUILD
+#include <stdio.h>
+#include <stdlib.h>
+
+#define ASSERT(cond, msg, file, line)                                          \
+    do {                                                                       \
+        if (!(cond)) {                                                         \
+            printf("ASSERT FAILED: %s at %s:%d\n", #cond, __FILE__, __LINE__); \
+            abort();                                                           \
+        }                                                                      \
+    } while (0)
+#else
+// Asset build - dummy assert
+#define ASSERT(cond, msg, file, line) ((void)0)
+#endif
+#else
 #include "assert.h"
+#endif
+
+#ifdef LINUX
+#include <math.h>
+#undef M_SQRT2
+#define M_SQRT2 1.41421356237309504880f
+#define MAXFLOAT 3.40282347e+38f
+#define SHT_MAX 32767.0f
+#define SHT_MINV (1.0f / SHT_MAX)
+extern float qNaN0x10000;
+extern float qNaN0x3FFFFF;
+extern float sNaN0x3FFFFF;
+#else
 #include "math.h"
+#endif
+
 #include "stdarg.h"
 #include "stdbool.h"
 #include "stddef.h"

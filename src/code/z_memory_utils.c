@@ -13,15 +13,7 @@
  * @return dest
  */
 void* MemCpy(void* dest, const void* src, s32 len) {
-    u8* d = dest;
-    const u8* s = src;
-
-    while (len > 0) {
-        *d++ = *s++;
-        len--;
-    }
-
-    return dest;
+    return memcpy(dest, src, len);
 }
 
 /**
@@ -37,13 +29,5 @@ void* MemCpy(void* dest, const void* src, s32 len) {
  * @return dest
  */
 void* MemSet(void* dest, s32 val, s32 len) {
-    u8* d = dest;
-    s32 s = len;
-
-    while (s > 0) {
-        *d++ = val;
-        s--;
-    }
-
-    return dest;
+    return memset(dest, (u8)val, len);
 }

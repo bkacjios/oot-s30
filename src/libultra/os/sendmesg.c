@@ -1,6 +1,28 @@
 #include "ultra64.h"
 
+#include "ultra64.h"
+
 s32 osSendMesg(OSMesgQueue* mq, OSMesg msg, s32 flag) {
+#ifdef LINUX
+    s32 prevInt;
+
+    if (mq == NULL) {
+        return -1;
+    }
+    prevInt = __osDisableInt();
+
+    if (MQ_IS_FULL(mq)) {
+        __osRestoreInt(prevInt);
+        return -1;  // Can't block on PC
+    }
+
+    u32 index = (mq->first + mq->validCount) % mq->msgCount;
+    mq->msg[index] = msg;
+    mq->validCount++;
+    __osRestoreInt(prevInt);
+
+    return 0;
+#else
     register u32 prevInt = __osDisableInt();
     register u32 index;
 
@@ -25,4 +47,5 @@ s32 osSendMesg(OSMesgQueue* mq, OSMesg msg, s32 flag) {
     __osRestoreInt(prevInt);
 
     return 0;
+#endif
 }

@@ -1,6 +1,9 @@
 #include "ultra64.h"
 
 s32 __osPiRawStartDma(s32 dir, u32 cartAddr, void* dramAddr, size_t size) {
+    #ifdef LINUX
+    return 0;  // No-op on PC
+    #else
     s32 status;
 
     status = IO_READ(PI_STATUS_REG);
@@ -23,4 +26,5 @@ s32 __osPiRawStartDma(s32 dir, u32 cartAddr, void* dramAddr, size_t size) {
             break;
     }
     return 0;
+    #endif
 }

@@ -50,12 +50,13 @@ static GDP_LOADTEXTUREBLOCK_RUNTIME_QUALIFIERS u32 sLoadTextureBlock_siz_LINE_BY
  * Implements a version of gDPLoadTextureBlock using table lookups instead of token pasting, to allow values to be
  * passed into `siz` during runtime.
  */
-#define gDPLoadTextureBlock_Runtime(pkt, timg, fmt, siz, width, height, pal, cms, cmt, masks, maskt, shifts, shiftt)   \
+
+ #define gDPLoadTextureBlock_Runtime(pkt, timg, fmt, siz, width, height, pal, cms, cmt, masks, maskt, shifts, shiftt)   \
     _DW({                                                                                                              \
         gDPSetTextureImage(pkt, fmt, sLoadTextureBlock_siz_LOAD_BLOCK[siz], 1, timg);                                  \
         gDPSetTile(pkt, fmt, sLoadTextureBlock_siz_LOAD_BLOCK[siz], 0, 0, G_TX_LOADTILE, 0, cmt, maskt, shiftt, cms,   \
                    masks, shifts);                                                                                     \
-        gDPLoadSync(pkt);                                                                                              \
+        gDPLoadSync(pkt);      \
         gDPLoadBlock(pkt, G_TX_LOADTILE, 0, 0,                                                                         \
                      (((width) * (height) + sLoadTextureBlock_siz_INCR[siz]) >> sLoadTextureBlock_siz_SHIFT[siz]) - 1, \
                      CALC_DXT(width, sLoadTextureBlock_siz_BYTES[siz]));                                               \

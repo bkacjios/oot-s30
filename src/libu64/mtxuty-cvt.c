@@ -3,6 +3,11 @@
 #include "libu64/mtxuty-cvt.h"
 
 void MtxConv_F2L(Mtx* m1, MtxF* m2) {
+
+    LOG_UTILS_CHECK_NULL_POINTER("m1", m1, "../mtxuty-cvt.c", 31);
+    LOG_UTILS_CHECK_NULL_POINTER("m2", m2, "../mtxuty-cvt.c", 32);
+    guMtxF2L(m2->mf, m1);
+    /* 
     s32 i;
     s32 j;
 
@@ -17,6 +22,8 @@ void MtxConv_F2L(Mtx* m1, MtxF* m2) {
             m1->fracPart[i][j] = value;
         }
     }
+
+    */
 }
 
 void MtxConv_L2F(MtxF* m1, Mtx* m2) {

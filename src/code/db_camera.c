@@ -82,11 +82,11 @@ char D_8012D00C[] = GFXP_HIRAGANA "(ｲﾁｱﾜｾ)\0\0\0\0\0\0";
 char D_8012D020[] = GFXP_HIRAGANA "(ｾｯﾃｲ)\0\0\0\0\0\0\0\0";
 char D_8012D034[] = GFXP_HIRAGANA "(ｷｬｯｶﾝ)\0\0\0\0\0\0";
 char D_8012D048[] = GFXP_KATAKANA "ﾎﾟｲﾝﾄNo.  \0\0\0";
-char D_8012D05C[] = GFXP_HIRAGANA "ｶﾞｶｸ    \0\0\0";
-char D_8012D070[] = GFXP_KATAKANA "Nﾌﾚ-ﾑ   \0\0\0\0";
-char D_8012D084[] = GFXP_HIRAGANA "Zｶｲﾃﾝ   \0\0\0";
-char D_8012D098[] = GFXP_KATAKANA "ﾓ-ﾄﾞ    \0\0\0\0";
-char D_8012D0AC[] = "  R" GFXP_HIRAGANA "ﾁｭｳｼﾝ  \0\0\0";
+char D_8012D05C[96] = GFXP_HIRAGANA "ｶﾞｶｸ    \0\0\0";
+char D_8012D070[96] = GFXP_KATAKANA "Nﾌﾚ-ﾑ   \0\0\0\0";
+char D_8012D084[96] = GFXP_HIRAGANA "Zｶｲﾃﾝ   \0\0\0";
+char D_8012D098[96] = GFXP_KATAKANA "ﾓ-ﾄﾞ    \0\0\0\0";
+char D_8012D0AC[96] = "  R" GFXP_HIRAGANA "ﾁｭｳｼﾝ  \0\0\0";
 
 char D_8012D0C0[] = GFXP_HIRAGANA "Pｼﾞｶﾝ       \0\0";
 char D_8012D0D4[] = GFXP_HIRAGANA "ｷｮﾘ       \0";

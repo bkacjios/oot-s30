@@ -1704,7 +1704,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             //! return -1, which results in an out of bounds access behind the `sBottleColors` array.
             //! A value of -1 happens to access `gLinkChildBottleDL` (0x06018478). The last 3 bytes of
             //! this pointer are read as a color, which results in a dark teal color used for the bottle.
-            Color_RGB8* bottleColor = &sBottleColors[Player_ActionToBottle(this, this->itemAction)];
+            int colorIndex = (int)Player_ActionToBottle(this, this->itemAction);
+            if (colorIndex == -1) colorIndex = 0;
+            Color_RGB8* bottleColor = &sBottleColors[colorIndex];
 
             OPEN_DISPS(play->state.gfxCtx, "../z_player_lib.c", 2710);
 
@@ -1918,9 +1920,14 @@ u8 sPauseModelGroupBySword[] = {
 
 s32 Player_OverrideLimbDrawPause(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot, void* arg) {
     u8* playerSwordAndShield = arg;
-    //! @bug `playerSwordAndShield[0]` can be 0 (`PLAYER_SWORD_NONE`), which indexes `sPauseModelGroupBySword[-1]`.
-    //! The result happens to be 0 (`PLAYER_MODELGROUP_0`) in vanilla, but weird values are likely to cause a crash.
-    u8 modelGroup = sPauseModelGroupBySword[playerSwordAndShield[0] - PLAYER_SWORD_KOKIRI];
+    //! (vanilla @bug) `playerSwordAndShield[0]` can be 0 (`PLAYER_SWORD_NONE`) — e.g. opening the pause
+    //! menu early with no sword equipped — which would index `sPauseModelGroupBySword[-1]`. On N64 that
+    //! OOB read happens to yield 0 (`PLAYER_MODELGROUP_0`); with this port's memory layout it reads
+    //! garbage → bad model type → `sPlayerDListGroups[type]` junk pointer → crash. Handle NONE explicitly
+    //! as the value vanilla landed on by luck.
+    u8 modelGroup = (playerSwordAndShield[0] == PLAYER_SWORD_NONE)
+                        ? PLAYER_MODELGROUP_0
+                        : sPauseModelGroupBySword[playerSwordAndShield[0] - PLAYER_SWORD_KOKIRI];
     s32 type;
     s32 dListOffset = 0;
     Gfx** dLists;
@@ -1976,6 +1983,9 @@ void Player_DrawPauseImpl(PlayState* play, void* gameplayKeep, void* linkObject,
 
     OPEN_DISPS(play->state.gfxCtx, "../z_player_lib.c", 3129);
 
+    /* N64: run this block early from the WORK list (it carries its own
+       viewport/projection and renders to an offscreen buffer); the OPA/XLU
+       streams branch over it. */
     opaRef = POLY_OPA_DISP;
     POLY_OPA_DISP++;
 

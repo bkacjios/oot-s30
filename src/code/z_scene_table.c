@@ -908,11 +908,11 @@ Gfx* Gfx_TwoTexScrollPrimColor(GraphicsContext* gfxCtx, s32 tile1, u32 x1, u32 y
     y2 %= 512 << 2;
 
     gDPTileSync(displayList);
-    gDPSetTileSize(displayList + 1, tile1, x1, y1, x1 + ((width1 - 1) << 2), y1 + ((height1 - 1) << 2));
+    gDPSetTileSize(displayList + 1-1, tile1, x1, y1, x1 + ((width1 - 1) << 2), y1 + ((height1 - 1) << 2));
     gDPTileSync(displayList + 2);
-    gDPSetTileSize(displayList + 3, tile2, x2, y2, x2 + ((width2 - 1) << 2), y2 + ((height2 - 1) << 2));
-    gDPSetPrimColor(displayList + 4, 0, 0, r, g, b, a);
-    gSPEndDisplayList(displayList + 5);
+    gDPSetTileSize(displayList + 3-2, tile2, x2, y2, x2 + ((width2 - 1) << 2), y2 + ((height2 - 1) << 2));
+    gDPSetPrimColor(displayList + 4-2, 0, 0, r, g, b, a);
+    gSPEndDisplayList(displayList + 5-2);
 
     return displayList;
 }

@@ -750,7 +750,9 @@ void EnFz_Draw(Actor* thisx, PlayState* play) {
         MATRIX_FINALIZE_AND_LOAD(POLY_XLU_DISP++, play->state.gfxCtx, "../z_en_fz.c", 1183);
         gDPSetCombineLERP(POLY_XLU_DISP++, TEXEL1, PRIMITIVE, PRIM_LOD_FRAC, TEXEL0, TEXEL1, TEXEL0, PRIMITIVE, TEXEL0,
                           PRIMITIVE, ENVIRONMENT, COMBINED, ENVIRONMENT, COMBINED, 0, ENVIRONMENT, 0);
-        gDPSetPrimColor(POLY_XLU_DISP++, 0, 128, 155, 255, 255, 255);
+//      gDPSetCombineLERP(POLY_XLU_DISP++, TEXEL0, 0, ENVIRONMENT, 0, TEXEL0, 0, ENVIRONMENT, 0,
+  //                     0, 0, 0, COMBINED, 0, 0, 0, COMBINED);
+  gDPSetPrimColor(POLY_XLU_DISP++, 0, 128, 155, 255, 255, 255);
         gDPSetEnvColor(POLY_XLU_DISP++, 200, 200, 200, this->envAlpha);
         gSPDisplayList(POLY_XLU_DISP++, displayLists[index]);
     }
@@ -870,6 +872,24 @@ void EnFz_UpdateIceSmoke(EnFz* this, PlayState* play) {
     }
 }
 
+Gfx fakeGFreezardSteamStartDL[23] = {
+
+    gsDPPipeSync(),
+    gsDPSetTextureLUT(G_TT_NONE),
+    gsSPTexture(0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON),
+    gsDPLoadTextureBlock_4b(gFreezardSteamTex, G_IM_FMT_I, 32, 32, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, 5, 5, G_TX_NOLOD, G_TX_NOLOD),
+
+/* color = TEXEL0 * PRIM, alpha = TEXEL0 * PRIM; cycle 1 passthrough */
+    gsDPSetCombineLERP(TEXEL0, 0, PRIMITIVE, 0, TEXEL0, 0, PRIMITIVE, 0,
+                       0, 0, 0, COMBINED, 0, 0, 0, COMBINED),
+    gsDPSetRenderMode(G_RM_PASS, G_RM_ZB_XLU_SURF2),
+    gsSPClearGeometryMode(G_FOG | G_LIGHTING | G_TEXTURE_GEN | G_TEXTURE_GEN_LINEAR),
+    gsSPSetGeometryMode(G_CULL_BACK),
+    gsDPSetEnvColor(255, 255, 255, 128),
+    gsSPEndDisplayList(),
+
+};
+
 void EnFz_DrawEffects(EnFz* this, PlayState* play) {
     s16 i;
     GraphicsContext* gfxCtx = play->state.gfxCtx;
@@ -885,14 +905,36 @@ void EnFz_DrawEffects(EnFz* this, PlayState* play) {
             gDPPipeSync(POLY_XLU_DISP++);
 
             if (materialFlag == 0) {
-                gSPDisplayList(POLY_XLU_DISP++, SEGMENTED_TO_VIRTUAL(gFreezardSteamStartDL));
+                gSPDisplayList(POLY_XLU_DISP++, fakeGFreezardSteamStartDL);
+                    //SEGMENTED_TO_VIRTUAL(gFreezardSteamStartDL));
+
+// cycle 0 color is
+// (texel0_color - 0) * (env_alpha) + texel1_color
+// texel1_color + (texel0_color * env_alpha)
+
+// cycle 0 alpha is (TEXEL0 - 1)*ENVIRONMENT + TEXEL1
+// TEXEL1_alpha + (ENVIRONMENT_alpha * TEXEL0_alpha) - ENIVORNMENT_alpha
+
+// cycle 1 color is
+// (prim - env) * combined_color + env
+// prim*combined - env*combined + env
+// prim * combined - combined + 1
+// -
+// env
+
+
+
+// lerp(prim, env, combined)
+// cycle1 alpha is
+// (combined_alpha * primitive_alpha)
+
                 materialFlag++;
             }
 
-            gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 195, 225, 235, effect->primAlpha);
-            gSPSegment(POLY_XLU_DISP++, 0x08,
-                       Gfx_TwoTexScroll(play->state.gfxCtx, G_TX_RENDERTILE, 3 * (effect->timer + (3 * i)),
-                                        15 * (effect->timer + (3 * i)), 32, 64, 1, 0, 0, 32, 32));
+            gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 255, 255, 255, effect->primAlpha);
+  //          gSPSegment(POLY_XLU_DISP++, 0x08,
+//                       Gfx_TwoTexScroll(play->state.gfxCtx, G_TX_RENDERTILE, 3 * (effect->timer + (3 * i)),
+    //                                    15 * (effect->timer + (3 * i)), 32, 64, 1, 0, 0, 32, 32));
             Matrix_Translate(effect->pos.x, effect->pos.y, effect->pos.z, MTXMODE_NEW);
             Matrix_ReplaceRotation(&play->billboardMtxF);
             Matrix_Scale(effect->xyScale, effect->xyScale, 1.0f, MTXMODE_APPLY);

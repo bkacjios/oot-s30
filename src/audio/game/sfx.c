@@ -656,7 +656,6 @@ void Audio_StopSfxById(u32 sfxId) {
     cmp.sfxId = sfxId;
     Audio_RemoveMatchingSfxRequests(5, &cmp);
 }
-
 void Audio_ProcessSfxRequests(void) {
     while (gSfxRequestWriteIndex != gSfxRequestReadIndex) {
         Audio_ProcessSfxRequest();

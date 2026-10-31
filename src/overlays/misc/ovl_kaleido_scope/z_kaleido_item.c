@@ -449,8 +449,10 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
             SFX_PLAY_CENTERED(NA_SE_SY_CURSOR);
         }
     } else if ((pauseCtx->mainState == PAUSE_MAIN_STATE_3) && (pauseCtx->pageIndex == PAUSE_ITEM)) {
-        //! @bug cursorSlot is uninitialized
-        KaleidoScope_SetCursorPos(pauseCtx, cursorSlot * 4, pauseCtx->itemVtx);
+        //! (vanilla @bug) `cursorSlot` is uninitialized here; on N64 the stack garbage is harmless, but
+        //! `SetCursorPos` indexes `itemVtx[cursorSlot * 4]`, so here a junk u16 can read ~1MB past
+        //! the array into unmapped RAM and fault. Use the saved slot (as KaleidoScope_SetItemCursorPos does).
+        KaleidoScope_SetCursorPos(pauseCtx, pauseCtx->cursorSlot[PAUSE_ITEM] * 4, pauseCtx->itemVtx);
         pauseCtx->cursorColorSet = 4;
     }
 
@@ -538,8 +540,16 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     CLOSE_DISPS(play->state.gfxCtx, "../z_kaleido_item.c", 516);
 }
 
+#ifdef LINUX
+// The C buttons moved on the HUD (interface.h): same screen-to-page mapping as
+// the N64 values (centre x: 660 + 10.9 per pixel from 240.5, centre y:
+// 1100 - 11.25 per pixel from 31.5); C-right is the shoulder pill's icon
+static s16 sCButtonPosX[] = { 856, 1096, 1265 };
+static s16 sCButtonPosY[] = { 1280, 1044, 1342 };
+#else
 static s16 sCButtonPosX[] = { 660, 900, 1140 };
 static s16 sCButtonPosY[] = { 1100, 920, 1100 };
+#endif
 
 void KaleidoScope_UpdateItemEquip(PlayState* play) {
     static s16 D_8082A488 = 0;

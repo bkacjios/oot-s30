@@ -44,6 +44,12 @@ ViMode sViMode;
 FaultClient sGameFaultClient;
 u16 sLastButtonPressed;
 
+
+#ifdef LINUX 
+extern void PC_UpdateInput(void);
+#endif 
+
+
 void GameState_FaultPrint(void) {
     static char sBtnChars[] = "ABZSuldr*+LRudlr";
     s32 i;
@@ -56,6 +62,14 @@ void GameState_FaultPrint(void) {
         }
     }
 }
+#else
+u16 sLastButtonPressed;
+
+
+#ifdef LINUX 
+extern void PC_UpdateInput(void);
+#endif 
+
 #endif
 
 void GameState_SetFBFilter(Gfx** gfxP) {
@@ -290,6 +304,9 @@ void func_800C49F4(GraphicsContext* gfxCtx) {
 void PadMgr_RequestPadData(PadMgr* padMgr, Input* inputs, s32 gameRequest);
 
 void GameState_ReqPadData(GameState* gameState) {
+#ifdef LINUX
+    PC_UpdateInput();
+#endif
     PadMgr_RequestPadData(&gPadMgr, gameState->input, true);
 }
 

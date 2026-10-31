@@ -35,7 +35,7 @@ u32 EffectSsIceSmoke_Init(PlayState* play, u32 index, EffectSs* this, void* init
     EffectSsIceSmokeInitParams* initParams = (EffectSsIceSmokeInitParams*)initParamsx;
     s32 pad;
     s32 objectSlot;
-
+#if 0
     objectSlot = Object_GetSlot(&play->objectCtx, OBJECT_FZ);
 
     if ((objectSlot >= 0) && Object_IsLoaded(&play->objectCtx, objectSlot)) {
@@ -55,7 +55,7 @@ u32 EffectSsIceSmoke_Init(PlayState* play, u32 index, EffectSs* this, void* init
 
         return 1;
     }
-
+#endif
     PRINTF(T("Effect_SS_Ice_Smoke_ct():バンク Object_Bank_Fzが有りません。\n",
              "Effect_SS_Ice_Smoke_ct(): Bank Object_Bank_Fz does not exist.\n"));
 

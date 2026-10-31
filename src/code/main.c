@@ -46,7 +46,9 @@ extern struct IrqMgr gIrqMgr;
 #pragma increment_block_number "gc-eu:128 gc-eu-mq:128 gc-jp:128 gc-jp-ce:128 gc-jp-mq:128 gc-us:128 gc-us-mq:128" \
                                "ique-cn:0 ntsc-1.0:51 ntsc-1.1:51 ntsc-1.2:51 pal-1.0:49 pal-1.1:49"
 
+#ifndef LINUX
 extern u8 _buffersSegmentEnd[];
+#endif
 
 s32 gScreenWidth = SCREEN_WIDTH;
 s32 gScreenHeight = SCREEN_HEIGHT;
@@ -80,9 +82,13 @@ OSMesg sSerialMsgBuf[1];
 #if DEBUG_FEATURES
 void Main_LogSystemHeap(void) {
     PRINTF_COLOR_GREEN();
+#ifdef LINUX
+    PRINTF("System heap size %08x (%dKB)\n", gSystemHeapSize, gSystemHeapSize / 1024);
+#else
     PRINTF(
         T("システムヒープサイズ %08x(%dKB) 開始アドレス %08x\n", "System heap size %08x (%dKB) Start address %08x\n"),
         gSystemHeapSize, gSystemHeapSize / 1024, _buffersSegmentEnd);
+#endif
     PRINTF_RST();
 }
 #endif
@@ -100,7 +106,18 @@ void Main(void* arg) {
     gAppNmiBufferPtr = (PreNmiBuff*)osAppNMIBuffer;
     PreNmiBuff_Init(gAppNmiBufferPtr);
     Fault_Init();
-#if PLATFORM_N64
+
+#if defined(LINUX)
+    SysCfb_Init(0);
+    
+    void* heapMem = malloc(2.0 * 1024 * 1024);
+    if (!heapMem) {
+        PRINTF("Failed to allocate system heap\n");
+        return;
+    }
+    systemHeapStart = (uintptr_t)heapMem;
+    gSystemHeapSize = 2 * 1024 * 1024;
+#elif PLATFORM_N64
     func_800AD410();
     if (D_80121211 != 0) {
         systemHeapStart = (uintptr_t)_n64ddSegmentEnd;
@@ -110,14 +127,17 @@ void Main(void* arg) {
         systemHeapStart = (uintptr_t)_buffersSegmentEnd;
         SysCfb_Init(0);
     }
-#else
-    SysCfb_Init(0);
-    systemHeapStart = (uintptr_t)_buffersSegmentEnd;
-#endif
     fb = (uintptr_t)SysCfb_GetFbPtr(0);
     gSystemHeapSize = fb - systemHeapStart;
+#else
+    SysCfb_Init(0);
+    systemHeapStart = ((uintptr_t)_buffersSegmentEnd + 31) & ~31;
+    fb = (uintptr_t)SysCfb_GetFbPtr(0);
+    gSystemHeapSize = fb - systemHeapStart;
+#endif
+
     PRINTF(T("システムヒープ初期化 %08x-%08x %08x\n", "System heap initialization %08x-%08x %08x\n"), systemHeapStart,
-           fb, gSystemHeapSize);
+           systemHeapStart + gSystemHeapSize, gSystemHeapSize);
     Runtime_Init((void*)systemHeapStart, gSystemHeapSize);
 
 #if DEBUG_FEATURES
@@ -125,6 +145,10 @@ void Main(void* arg) {
         void* debugHeapStart;
         u32 debugHeapSize;
 
+#if defined(LINUX)
+        debugHeapSize = 256 * 1024;
+        debugHeapStart = malloc(debugHeapSize);
+#else
         if (osMemSize >= 0x800000) {
             debugHeapStart = SysCfb_GetFbEnd();
             debugHeapSize = PHYS_TO_K0(0x600000) - (uintptr_t)debugHeapStart;
@@ -132,6 +156,7 @@ void Main(void* arg) {
             debugHeapSize = 0x400;
             debugHeapStart = SYSTEM_ARENA_MALLOC(debugHeapSize, "../main.c", 565);
         }
+#endif
 
         PRINTF("debug_InitArena(%08x, %08x)\n", debugHeapStart, debugHeapSize);
         DebugArena_Init(debugHeapStart, debugHeapSize);
@@ -180,6 +205,10 @@ void Main(void* arg) {
     osSetThreadPri(NULL, THREAD_PRI_MAIN);
 #endif
 
+#if defined(LINUX)
+    // On PC, just call Graph directly instead of threading I think
+    Graph_ThreadEntry(arg);
+#else
     while (true) {
         s16* msg = NULL;
 
@@ -197,6 +226,7 @@ void Main(void* arg) {
                 break;
         }
     }
+#endif
 
     PRINTF(T("mainproc 後始末\n", "mainproc Cleanup\n"));
     osDestroyThread(&sGraphThread);

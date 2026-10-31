@@ -978,7 +978,7 @@ void BossFd2_Update(Actor* thisx, PlayState* play2) {
     BossFd2* this = (BossFd2*)thisx;
     s16 i;
 
-    PRINTF("FD2 move start \n");
+//    PRINTF("FD2 move start \n");
     this->disableAT = false;
     this->actor.flags &= ~ACTOR_FLAG_HOOKSHOT_PULLS_PLAYER;
     this->work[FD2_VAR_TIMER]++;
@@ -1212,7 +1212,7 @@ void BossFd2_Draw(Actor* thisx, PlayState* play) {
     BossFd2* this = (BossFd2*)thisx;
 
     OPEN_DISPS(play->state.gfxCtx, "../z_boss_fd2.c", 2617);
-    PRINTF("FD2 draw start \n");
+    //PRINTF("FD2 draw start \n");
     if (this->actionFunc != BossFd2_Wait) {
         Gfx_SetupDL_25Opa(play->state.gfxCtx);
         if (this->work[FD2_DAMAGE_FLASH_TIMER] & 2) {

@@ -484,13 +484,15 @@ void Health_DrawMeter(PlayState* play) {
             }
 
             {
-                Mtx* matrix = GRAPH_ALLOC(gfxCtx, sizeof(Mtx));
-                Matrix_SetTranslateScaleMtx2(
-                    matrix, 1.0f - (0.32f * beatingHeartPulsingSize), 1.0f - (0.32f * beatingHeartPulsingSize),
-                    1.0f - (0.32f * beatingHeartPulsingSize), -130.0f + offsetX, 94.5f - offsetY, 0.0f);
-                gSPMatrix(OVERLAY_DISP++, matrix, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-                gSPVertex(OVERLAY_DISP++, beatingHeartVtx, 4, 0);
-                gSP1Quadrangle(OVERLAY_DISP++, 0, 2, 3, 1, 0);
+                f32 sc = 1.0f - (0.32f * beatingHeartPulsingSize);
+                f32 halfLen = 8.0f * sc;
+                f32 hcX = 30.0f + offsetX;
+                f32 hcY = 26.0f + offsetY;
+                f32 texStep = 1.0f / sc * (1 << 10);
+                gSPTextureRectangle(OVERLAY_DISP++,
+                    (s32)((hcX - halfLen) * 4), (s32)((hcY - halfLen) * 4),
+                    (s32)((hcX + halfLen) * 4), (s32)((hcY + halfLen) * 4),
+                    G_TX_RENDERTILE, 0, 0, (s32)texStep, (s32)texStep);
             }
         }
 

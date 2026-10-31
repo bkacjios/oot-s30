@@ -833,32 +833,15 @@ void UCodeDisas_Disassemble(UCodeDisas* this, Gfx* ptr) {
                                     MtxConv_L2F(&mtxF, (Mtx*)addr);
                                     DISAS_LOG("\n");
 
-                                    //! @bug  %.04x.%04x is a typo, should be  %04x.%04x
                                     // clang-format off
                                     DISAS_LOG(
-                                        "/ %04x.%04x %04x.%04x %04x.%04x %.04x.%04x \\/ %12.6f %12.6f %12.6f %12.6f \\\n"
-                                        "| %04x.%04x %04x.%04x %04x.%04x %.04x.%04x || %12.6f %12.6f %12.6f %12.6f |\n"
-                                        "| %04x.%04x %04x.%04x %04x.%04x %.04x.%04x || %12.6f %12.6f %12.6f %12.6f |\n"
-                                        "\\ %04x.%04x %04x.%04x %04x.%04x %.04x.%04x /\\ %12.6f %12.6f %12.6f %12.6f /\n",
-                                        ((Mtx*)addr)->intPart[0][0], ((Mtx*)addr)->fracPart[0][0],
-                                        ((Mtx*)addr)->intPart[1][0], ((Mtx*)addr)->fracPart[1][0],
-                                        ((Mtx*)addr)->intPart[2][0], ((Mtx*)addr)->fracPart[2][0],
-                                        ((Mtx*)addr)->intPart[3][0], ((Mtx*)addr)->fracPart[3][0],
+                                        "/ %12.6f %12.6f %12.6f %12.6f \\\n"
+                                        "| %12.6f %12.6f %12.6f %12.6f |\n"
+                                        "| %12.6f %12.6f %12.6f %12.6f |\n"
+                                        "\\ %12.6f %12.6f %12.6f %12.6f /\n",
                                         mtxF.mf[0][0], mtxF.mf[1][0], mtxF.mf[2][0], mtxF.mf[3][0],
-                                        ((Mtx*)addr)->intPart[0][1], ((Mtx*)addr)->fracPart[0][1],
-                                        ((Mtx*)addr)->intPart[1][1], ((Mtx*)addr)->fracPart[1][1],
-                                        ((Mtx*)addr)->intPart[2][1], ((Mtx*)addr)->fracPart[2][1],
-                                        ((Mtx*)addr)->intPart[3][1], ((Mtx*)addr)->fracPart[3][1],
                                         mtxF.mf[0][1], mtxF.mf[1][1], mtxF.mf[2][1], mtxF.mf[3][1],
-                                        ((Mtx*)addr)->intPart[0][2], ((Mtx*)addr)->fracPart[0][2],
-                                        ((Mtx*)addr)->intPart[1][2], ((Mtx*)addr)->fracPart[1][2],
-                                        ((Mtx*)addr)->intPart[2][2], ((Mtx*)addr)->fracPart[2][2],
-                                        ((Mtx*)addr)->intPart[3][2], ((Mtx*)addr)->fracPart[3][2],
                                         mtxF.mf[0][2], mtxF.mf[1][2], mtxF.mf[2][2], mtxF.mf[3][2],
-                                        ((Mtx*)addr)->intPart[0][3], ((Mtx*)addr)->fracPart[0][3],
-                                        ((Mtx*)addr)->intPart[1][3], ((Mtx*)addr)->fracPart[1][3],
-                                        ((Mtx*)addr)->intPart[2][3], ((Mtx*)addr)->fracPart[2][3],
-                                        ((Mtx*)addr)->intPart[3][3], ((Mtx*)addr)->fracPart[3][3],
                                         mtxF.mf[0][3], mtxF.mf[1][3], mtxF.mf[2][3], mtxF.mf[3][3]);
                                     // clang-format on
                                 }

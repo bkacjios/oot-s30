@@ -267,10 +267,12 @@ s32 Environment_ZBufValToFixedPoint(s32 zBufferVal) {
     return ret;
 }
 
-u16 Environment_GetPixelDepth(s32 x, s32 y) {
-    s32 pixelDepth = gZBuffer[y][x];
+#include "s30_platform.h"
 
-    return pixelDepth;
+u16 Environment_GetPixelDepth(s32 x, s32 y) {
+    // The z-buffer is on the GPU: only "nothing drawn here" (the cleared,
+    // maximum depth) is told apart, which is all the sun test needs
+    return S30Gfx_DepthVisible(x, y, 1.0f) ? GPACK_ZDZ(G_MAXFBZ, 0) : 0;
 }
 
 void Environment_GraphCallback(GraphicsContext* gfxCtx, void* param) {
@@ -1446,7 +1448,8 @@ void Environment_DrawSunAndMoon(PlayState* play) {
     }
 
     if (gSaveContext.save.entranceIndex != ENTR_HYRULE_FIELD_0 || ((void)0, gSaveContext.sceneLayer) != 5) {
-        Matrix_Translate(play->view.eye.x + play->envCtx.sunPos.x, play->view.eye.y + play->envCtx.sunPos.y,
+        Matrix_Translate(play->view.eye.x + play->envCtx.sunPos.x,
+                         play->view.eye.y + play->envCtx.sunPos.y,
                          play->view.eye.z + play->envCtx.sunPos.z, MTXMODE_NEW);
 
         y = play->envCtx.sunPos.y / 25.0f;
@@ -1480,7 +1483,8 @@ void Environment_DrawSunAndMoon(PlayState* play) {
         Gfx_SetupDL_54Opa(play->state.gfxCtx);
         gSPDisplayList(POLY_OPA_DISP++, gSunDL);
 
-        Matrix_Translate(play->view.eye.x - play->envCtx.sunPos.x, play->view.eye.y - play->envCtx.sunPos.y,
+        Matrix_Translate(play->view.eye.x - play->envCtx.sunPos.x,
+                         play->view.eye.y - play->envCtx.sunPos.y,
                          play->view.eye.z - play->envCtx.sunPos.z, MTXMODE_NEW);
 
         color = -y / 120.0f;
@@ -1503,7 +1507,6 @@ void Environment_DrawSunAndMoon(PlayState* play) {
             gSPDisplayList(POLY_OPA_DISP++, gMoonDL);
         }
     }
-
     CLOSE_DISPS(play->state.gfxCtx, "../z_kankyo.c", 2429);
 }
 
@@ -1625,8 +1628,8 @@ void Environment_DrawLensFlare(PlayState* play, EnvironmentContext* envCtx, View
             Play_GetScreenPos(play, &pos, &screenPos);
             sSunDepthTestX = (s16)screenPos.x;
             sSunDepthTestY = (s16)screenPos.y - 5.0f;
-            if (sSunScreenDepth != GPACK_ZDZ(G_MAXFBZ, 0) || screenPos.x < 0.0f || screenPos.y < 0.0f ||
-                screenPos.x > SCREEN_WIDTH || screenPos.y > SCREEN_HEIGHT) {
+            if ((sSunScreenDepth != GPACK_ZDZ(G_MAXFBZ, 0)) || (screenPos.x < 0.0f) || (screenPos.y < 0.0f) ||
+                (screenPos.x > SCREEN_WIDTH) || (screenPos.y > SCREEN_HEIGHT)) {
                 isOffScreen = true;
             }
         }
@@ -1670,9 +1673,13 @@ void Environment_DrawLensFlare(PlayState* play, EnvironmentContext* envCtx, View
                 Math_SmoothStepToF(&envCtx->lensFlareAlphaScale, 0.0f, 0.5f, 0.05f, 0.001f);
             }
 
+            u8 alphaToUse = alpha * envCtx->lensFlareAlphaScale;
+            if (alphaToUse > 224) alphaToUse = 224;
+            if (alphaToUse < 0) alphaToUse = 0;
+
             POLY_XLU_DISP = func_800947AC(POLY_XLU_DISP++);
             gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, lensFlareColors[i].r, lensFlareColors[i].g, lensFlareColors[i].b,
-                            alpha * envCtx->lensFlareAlphaScale);
+                            alphaToUse);//alpha * envCtx->lensFlareAlphaScale);
             MATRIX_FINALIZE_AND_LOAD(POLY_XLU_DISP++, gfxCtx, "../z_kankyo.c", 2662);
             gDPSetCombineLERP(POLY_XLU_DISP++, 0, 0, 0, PRIMITIVE, TEXEL0, 0, PRIMITIVE, 0, 0, 0, 0, PRIMITIVE, TEXEL0,
                               0, PRIMITIVE, 0);
@@ -1911,9 +1918,9 @@ void Environment_DrawSkyboxFilters(PlayState* play) {
 void Environment_DrawLightningFlash(PlayState* play, u8 red, u8 green, u8 blue, u8 alpha) {
     OPEN_DISPS(play->state.gfxCtx, "../z_kankyo.c", 3069);
 
-    Gfx_SetupDL_57Opa(play->state.gfxCtx);
-    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, red, green, blue, alpha);
-    gDPFillRectangle(POLY_OPA_DISP++, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
+    POLY_XLU_DISP = Gfx_SetupDL_57(POLY_XLU_DISP);
+    gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, red, green, blue, alpha);
+    gDPFillRectangle(POLY_XLU_DISP++, 0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
 
     CLOSE_DISPS(play->state.gfxCtx, "../z_kankyo.c", 3079);
 }

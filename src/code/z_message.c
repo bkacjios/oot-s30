@@ -26,6 +26,8 @@
 
 #include "assets/textures/parameter_static/parameter_static.h"
 
+extern void gfx_texture_cache_invalidate(void* addr);
+
 #pragma increment_block_number "gc-eu:128 gc-eu-mq:128 gc-jp:0 gc-jp-ce:0 gc-jp-mq:0 gc-us:0 gc-us-mq:0 ntsc-1.0:16" \
                                "ntsc-1.1:16 ntsc-1.2:16 pal-1.0:0 pal-1.1:0"
 
@@ -1719,8 +1721,8 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
 
     if (itemId == ITEM_DUNGEON_MAP) {
-        interfaceCtx->mapPalette[30] = -1;
-        interfaceCtx->mapPalette[31] = -1;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(30)] = -1;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(31)] = -1;
     }
     if (itemId < ITEM_MEDALLION_FOREST) {
         R_TEXTBOX_ICON_XPOS = R_TEXT_INIT_XPOS - sIconItem32XOffsets[gSaveContext.language];
@@ -1728,6 +1730,7 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
         R_TEXTBOX_ICON_DIMENSION = ITEM_ICON_WIDTH; // assumes the image is square
         DMA_REQUEST_SYNC(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE, GET_ITEM_ICON_VROM(itemId), ITEM_ICON_SIZE,
                          "../z_message_PAL.c", 1473);
+        gfx_texture_cache_invalidate(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE);
         PRINTF(T("アイテム32-0\n", "Item 32-0\n"));
     } else {
         R_TEXTBOX_ICON_XPOS = R_TEXT_INIT_XPOS - sIconItem24XOffsets[gSaveContext.language];
@@ -1735,6 +1738,7 @@ void Message_LoadItemIcon(PlayState* play, u16 itemId, s16 y) {
         R_TEXTBOX_ICON_DIMENSION = QUEST_ICON_WIDTH; // assumes the image is square
         DMA_REQUEST_SYNC(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE, GET_QUEST_ICON_VROM(itemId), QUEST_ICON_SIZE,
                          "../z_message_PAL.c", 1482);
+        gfx_texture_cache_invalidate(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE);
         PRINTF(T("アイテム24＝%d (%d) {%d}\n", "Item 24=%d (%d) {%d}\n"), itemId, itemId - ITEM_KOKIRI_EMERALD, 84);
     }
     msgCtx->msgBufPos++;
@@ -1819,6 +1823,7 @@ void Message_Decode(PlayState* play) {
                         font->charTexBuf[charTexIdx + j + 2] = fontBuf[j + 2];
                         font->charTexBuf[charTexIdx + j + 3] = fontBuf[j + 3];
                     }
+                    gfx_texture_cache_invalidate(&font->charTexBuf[charTexIdx]);
                     charTexIdx += FONT_CHAR_TEX_SIZE;
                 }
                 decodedBufPos += playerNameLen - 1;
@@ -2092,6 +2097,8 @@ void Message_Decode(PlayState* play) {
                                  (uintptr_t)_message_texture_staticSegmentRomStart +
                                      (msgCtx->textboxBackgroundIdx + 1) * MESSAGE_TEXTURE_STATIC_TEX_SIZE,
                                  MESSAGE_TEXTURE_STATIC_TEX_SIZE, "../z_message_PAL.c", UNK_LINE);
+                gfx_texture_cache_invalidate(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE);
+                gfx_texture_cache_invalidate(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE + MESSAGE_TEXTURE_STATIC_TEX_SIZE);
                 numLines = 2;
                 msgCtx->msgBufPos += 2;
                 R_TEXTBOX_BG_YPOS = R_TEXTBOX_Y + 8;
@@ -2489,6 +2496,8 @@ void Message_Decode(PlayState* play) {
                                  (uintptr_t)_message_texture_staticSegmentRomStart +
                                      (msgCtx->textboxBackgroundIdx + 1) * MESSAGE_TEXTURE_STATIC_TEX_SIZE,
                                  MESSAGE_TEXTURE_STATIC_TEX_SIZE, "../z_message_PAL.c", 1834);
+                gfx_texture_cache_invalidate(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE);
+                gfx_texture_cache_invalidate(msgCtx->textboxSegment + MESSAGE_STATIC_TEX_SIZE + MESSAGE_TEXTURE_STATIC_TEX_SIZE);
                 msgCtx->msgBufPos += 3;
                 R_TEXTBOX_BG_YPOS = R_TEXTBOX_Y + 8;
                 numLines = 2;
@@ -2712,6 +2721,7 @@ void Message_OpenText(PlayState* play, u16 textId) {
                          (uintptr_t)_message_staticSegmentRomStart +
                              (messageStaticIndices[textBoxType] * MESSAGE_STATIC_TEX_SIZE),
                          MESSAGE_STATIC_TEX_SIZE, "../z_message_PAL.c", 2006);
+        gfx_texture_cache_invalidate(msgCtx->textboxSegment);
         if (textBoxType == TEXTBOX_TYPE_BLACK) {
             msgCtx->textboxColorRed = 0;
             msgCtx->textboxColorGreen = 0;

@@ -1,5 +1,5 @@
 #include "ultra64.h"
-
+// Look at this later - Bruce.s
 u32 osVirtualToPhysical(void* vaddr) {
     if (IS_KSEG0(vaddr)) {
         return K0_TO_PHYS(vaddr);

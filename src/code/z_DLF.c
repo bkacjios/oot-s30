@@ -12,6 +12,13 @@ void Overlay_LoadGameState(GameStateOverlay* overlayEntry) {
         return;
     }
 
+    #ifdef LINUX
+    // PC: Overlays statically linked, function pointers already valid
+    overlayEntry->loadedRamAddr = (void*)1;
+    overlayEntry->unk_28 = 0;
+    return;
+    #endif
+
     if (overlayEntry->vramStart == NULL) {
         overlayEntry->unk_28 = 0;
     } else {
@@ -70,6 +77,13 @@ void Overlay_LoadGameState(GameStateOverlay* overlayEntry) {
 }
 
 void Overlay_FreeGameState(GameStateOverlay* overlayEntry) {
+
+
+    #ifdef LINUX
+    overlayEntry->loadedRamAddr = NULL;
+    return;
+    #endif
+
     if (overlayEntry->loadedRamAddr != NULL) {
         s32 temp = overlayEntry->unk_28 != 0 ? -1 : 0;
 

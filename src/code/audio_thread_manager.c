@@ -149,10 +149,15 @@ void AudioMgr_ThreadEntry(void* arg) {
  * the queue.
  */
 void AudioMgr_WaitForInit(AudioMgr* audioMgr) {
+#ifdef LINUX
+    return;
+#else
     osRecvMesg(&audioMgr->initQueue, NULL, OS_MESG_BLOCK);
+#endif
 }
 
 void AudioMgr_Init(AudioMgr* audioMgr, void* stack, OSPri pri, OSId id, Scheduler* sched, IrqMgr* irqMgr) {
+
     bzero(audioMgr, sizeof(AudioMgr));
 
     audioMgr->sched = sched;
@@ -167,9 +172,16 @@ void AudioMgr_Init(AudioMgr* audioMgr, void* stack, OSPri pri, OSId id, Schedule
     osCreateMesgQueue(&audioMgr->interruptQueue, audioMgr->interruptMsgBuf, ARRAY_COUNT(audioMgr->interruptMsgBuf));
     osCreateMesgQueue(&audioMgr->initQueue, &audioMgr->initMsg, 1);
 
-    // Send a message to the task done queue so it is initially full
     osSendMesg(&audioMgr->taskDoneQueue, NULL, OS_MESG_BLOCK);
 
     osCreateThread(&audioMgr->thread, id, AudioMgr_ThreadEntry, audioMgr, stack, pri);
     osStartThread(&audioMgr->thread);
+
+#ifdef LINUX
+    // N64 threading stubs don't dispatch threads - call audio init directly
+    Audio_Init();
+    AudioLoad_SetDmaHandler(DmaMgr_AudioDmaHandler);
+    Audio_InitSound();
+    PRINTF("LINUX: Audio initialized directly (no thread)\n");
+#endif
 }

@@ -10,9 +10,5 @@ void guScaleF(f32 m[4][4], f32 x, f32 y, f32 z) {
 }
 
 void guScale(Mtx* m, f32 x, f32 y, f32 z) {
-    f32 mf[4][4];
-
-    guScaleF(mf, x, y, z);
-
-    guMtxF2L(mf, m);
+    guScaleF((void*)m, x, y, z);
 }

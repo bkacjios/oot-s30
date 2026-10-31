@@ -11,39 +11,22 @@ MtxF gSkinLimbMatrices[60]; // holds matrices for each limb of the skeleton curr
 void Skin_UpdateVertices(MtxF* mtx, SkinVertex* skinVertices, SkinLimbModif* modifEntry, Vtx* vtxBuf, Vec3f* pos) {
     Vtx* vtx;
     SkinVertex* vertexEntry;
+    f32 nx, ny, nz;
 
     for (vertexEntry = skinVertices; vertexEntry < &skinVertices[modifEntry->vtxCount]; vertexEntry++) {
-        f32 xwTemp;
-        f32 ywTemp;
-        f32 zwTemp;
-        Vec3f normal;
-        Vec3f sp64;
-
         vtx = &vtxBuf[vertexEntry->index];
 
         vtx->n.ob[0] = pos->x;
         vtx->n.ob[1] = pos->y;
         vtx->n.ob[2] = pos->z;
 
-        xwTemp = mtx->xw;
-        ywTemp = mtx->yw;
-        zwTemp = mtx->zw;
-
-        mtx->xw = mtx->yw = mtx->zw = 0.0f;
-
-        sp64.x = vertexEntry->normX;
-        sp64.y = vertexEntry->normY;
-        sp64.z = vertexEntry->normZ;
-
-        SkinMatrix_Vec3fMtxFMultXYZ(mtx, &sp64, &normal);
-
-        vtx->n.n[0] = normal.x;
-        vtx->n.n[1] = normal.y;
-        vtx->n.n[2] = normal.z;
-
-        mtx->xw = xwTemp;
-        mtx->yw = ywTemp;
-        mtx->zw = zwTemp;
+        // Normal: rotation part of the limb matrix only (no translation)
+        nx = vertexEntry->normX;
+        ny = vertexEntry->normY;
+        nz = vertexEntry->normZ;
+        vtx->n.n[0] = mtx->xx * nx + mtx->xy * ny + mtx->xz * nz;
+        vtx->n.n[1] = mtx->yx * nx + mtx->yy * ny + mtx->yz * nz;
+        vtx->n.n[2] = mtx->zx * nx + mtx->zy * ny + mtx->zz * nz;
     }
 }
 

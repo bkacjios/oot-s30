@@ -331,8 +331,8 @@ void KaleidoScope_DrawDungeonMap(PlayState* play, GraphicsContext* gfxCtx) {
         mapBgPulseB -= stepB;
 
         rgba16 = ((mapBgPulseR & 0x1F) << 11) | ((mapBgPulseG & 0x1F) << 6) | ((mapBgPulseB & 0x1F) << 1) | 1;
-        interfaceCtx->mapPalette[28] = (rgba16 & 0xFF00) >> 8;
-        interfaceCtx->mapPalette[29] = rgba16 & 0xFF;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(28)] = (rgba16 & 0xFF00) >> 8;
+        interfaceCtx->mapPalette[MAP_PAL_IDX(29)] = rgba16 & 0xFF;
 
         mapBgPulseTimer--;
         if (mapBgPulseTimer == 0) {

@@ -9,7 +9,6 @@
 #include "z_lib.h"
 #include "game.h"
 #include "skin_matrix.h"
-
 // clang-format off
 Mtx gIdentityMtx = gdSPDefMtx(
     1.0f, 0.0f, 0.0f, 0.0f,
@@ -146,7 +145,6 @@ void Matrix_RotateX(f32 x, u8 mode) {
         }
     } else {
         cmf = sCurrentMatrix;
-
         if (x != 0) {
             sin = sinf(x);
             cos = cosf(x);
@@ -210,7 +208,6 @@ void Matrix_RotateY(f32 y, u8 mode) {
         }
     } else {
         cmf = sCurrentMatrix;
-
         if (y != 0) {
             sin = sinf(y);
             cos = cosf(y);
@@ -274,7 +271,6 @@ void Matrix_RotateZ(f32 z, u8 mode) {
         }
     } else {
         cmf = sCurrentMatrix;
-
         if (z != 0) {
             sin = sinf(z);
             cos = cosf(z);
@@ -402,6 +398,7 @@ void Matrix_TranslateRotateZYX(Vec3f* translation, Vec3s* rotation) {
     MtxF* cmf = sCurrentMatrix;
     f32 sin = Math_SinS(rotation->z);
     f32 cos = Math_CosS(rotation->z);
+
     f32 temp1;
     f32 temp2;
 
@@ -488,6 +485,7 @@ void Matrix_SetTranslateRotateYXZ(f32 translateX, f32 translateY, f32 translateZ
     MtxF* cmf = sCurrentMatrix;
     f32 temp1 = Math_SinS(rot->y);
     f32 temp2 = Math_CosS(rot->y);
+
     f32 cos;
     f32 sin;
 
@@ -543,6 +541,14 @@ void Matrix_SetTranslateRotateYXZ(f32 translateX, f32 translateY, f32 translateZ
 }
 
 Mtx* Matrix_MtxFToMtx(MtxF* src, Mtx* dest) {
+    guMtxF2L(src->mf, dest);
+
+
+    return dest;
+ 
+
+    //ORIGINAL CODE
+    /*  does not produce same result on n64 / PC 
     s32 temp;
     u16* m1 = (u16*)&dest->m[0][0];
     u16* m2 = (u16*)&dest->m[2][0];
@@ -610,8 +616,9 @@ Mtx* Matrix_MtxFToMtx(MtxF* src, Mtx* dest) {
     temp = src->ww * 0x10000;
     m1[15] = (temp >> 0x10);
     m2[15] = temp & 0xFFFF;
-    return dest;
-}
+
+    */
+ }
 
 #if DEBUG_FEATURES
 
@@ -683,6 +690,9 @@ void Matrix_MtxFCopy(MtxF* dest, MtxF* src) {
 }
 
 void Matrix_MtxToMtxF(Mtx* src, MtxF* dest) {
+    guMtxL2F(dest->mf, src);
+
+/* ORIGINAL CODE 
     u16* m1 = (u16*)&src->m[0][0];
     u16* m2 = (u16*)&src->m[2][0];
 
@@ -702,6 +712,7 @@ void Matrix_MtxToMtxF(Mtx* src, MtxF* dest) {
     dest->yw = ((m1[13] << 0x10) | m2[13]) * (1 / 65536.0f);
     dest->zw = ((m1[14] << 0x10) | m2[14]) * (1 / 65536.0f);
     dest->ww = ((m1[15] << 0x10) | m2[15]) * (1 / 65536.0f);
+ */
 }
 
 void Matrix_MultVec3fExt(Vec3f* src, Vec3f* dest, MtxF* mf) {
@@ -933,6 +944,7 @@ void Matrix_RotateAxis(f32 angle, Vec3f* axis, u8 mode) {
         if (angle != 0) {
             sin = sinf(angle);
             cos = cosf(angle);
+
             rCos = 1.0f - cos;
 
             cmf->xx = axis->x * axis->x * rCos + cos;
@@ -1029,6 +1041,9 @@ void Matrix_SetTranslateUniformScaleMtx(Mtx* mtx, f32 scale, f32 translateX, f32
 }
 
 void Matrix_SetTranslateUniformScaleMtx2(Mtx* mtx, f32 scale, f32 translateX, f32 translateY, f32 translateZ) {
+    Matrix_SetTranslateUniformScaleMtx(mtx, scale, translateX, translateY, translateZ);
+
+    /* ORIGINAL CODE
     u16* intPart = (u16*)&mtx->m[0][0];
     u16* fracPart = (u16*)&mtx->m[2][0];
     u32 fixedPoint;
@@ -1078,10 +1093,22 @@ void Matrix_SetTranslateUniformScaleMtx2(Mtx* mtx, f32 scale, f32 translateX, f3
     fracPart[9] = 0;
     fracPart[11] = 0;
     fracPart[15] = 0;
+    */
+
+
 }
 
 void Matrix_SetTranslateScaleMtx1(Mtx* mtx, f32 scaleX, f32 scaleY, f32 scaleZ, f32 translateX, f32 translateY,
                                   f32 translateZ) {
+
+      MtxF mf;
+    mf.xx = scaleX;  mf.xy = 0.0f;    mf.xz = 0.0f;    mf.xw = translateX;
+    mf.yx = 0.0f;    mf.yy = scaleY;  mf.yz = 0.0f;    mf.yw = translateY;
+    mf.zx = 0.0f;    mf.zy = 0.0f;    mf.zz = scaleZ;  mf.zw = translateZ;
+    mf.wx = 0.0f;    mf.wy = 0.0f;    mf.wz = 0.0f;    mf.ww = 1.0f;
+    guMtxF2L(mf.mf, mtx);
+
+   /*  ORIGINAL CODE                               
     u16* intPart = (u16*)&mtx->m[0][0];
     u16* fracPart = (u16*)&mtx->m[2][0];
     u32 fixedPoint;
@@ -1131,10 +1158,33 @@ void Matrix_SetTranslateScaleMtx1(Mtx* mtx, f32 scaleX, f32 scaleY, f32 scaleZ, 
     fracPart[9] = 0;
     fracPart[11] = 0;
     fracPart[15] = 0;
-}
 
+    // Round-trip test  
+    {
+        static int count = 0;
+        if (count < 5) {
+            f32 test[4][4];
+            guMtxL2F(test, mtx);
+            PRINTF("SetTranslateScaleMtx1: scaleX=%f -> [0][0]=%f [3][3]=%f (expect scaleX, 1.0)\n",
+                   scaleX, test[0][0], test[3][3]);
+            count++;
+        }
+    }
+
+     */  
+}
 void Matrix_SetTranslateScaleMtx2(Mtx* mtx, f32 scaleX, f32 scaleY, f32 scaleZ, f32 translateX, f32 translateY,
                                   f32 translateZ) {
+
+
+    MtxF mf;
+    mf.xx = scaleX;  mf.xy = 0.0f;    mf.xz = 0.0f;    mf.xw = translateX;
+    mf.yx = 0.0f;    mf.yy = scaleY;  mf.yz = 0.0f;    mf.yw = translateY;
+    mf.zx = 0.0f;    mf.zy = 0.0f;    mf.zz = scaleZ;  mf.zw = translateZ;
+    mf.wx = 0.0f;    mf.wy = 0.0f;    mf.wz = 0.0f;    mf.ww = 1.0f;
+    guMtxF2L(mf.mf, mtx);
+
+    /*  ORIGINAL CODE
     Mtx_t* m = &mtx->m;
     u16* intPart = (u16*)&(*m)[0][0];
     u16* fracPart = (u16*)&(*m)[2][0];
@@ -1174,4 +1224,18 @@ void Matrix_SetTranslateScaleMtx2(Mtx* mtx, f32 scaleX, f32 scaleY, f32 scaleZ, 
     intPart[14] = (fixedPoint >> 16) & 0xFFFF;
     intPart[15] = 1;
     (*m)[3][3] = fixedPoint << 16;
+
+    // Round-trip test  
+    {
+        static int count = 0;
+        if (count < 5) {
+            f32 test[4][4];
+            guMtxL2F(test, mtx);
+            PRINTF("SetTranslateScaleMtx2: [0][0]=%f [1][1]=%f [2][2]=%f [3][3]=%f (expect %f, %f, %f, 1.0)\n",
+                   test[0][0], test[1][1], test[2][2], test[3][3], scaleX, scaleY, scaleZ);
+            count++;
+        }
+    }
+
+    */
 }

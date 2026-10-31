@@ -3,7 +3,8 @@
 #include "segment_symbols.h"
 #include "z_actor_dlftbls.h"
 
-// Linker symbol declarations (used in the table below)
+#ifndef LINUX
+// Linker symbol declarations (used in the table below) - NOT needed for PC
 #define DEFINE_ACTOR(name, _1, _2, _3) DECLARE_OVERLAY_SEGMENT(name)
 #define DEFINE_ACTOR_INTERNAL(_0, _1, _2, _3)
 #define DEFINE_ACTOR_UNSET(_0)
@@ -13,6 +14,7 @@
 #undef DEFINE_ACTOR
 #undef DEFINE_ACTOR_INTERNAL
 #undef DEFINE_ACTOR_UNSET
+#endif
 
 // Profile declarations (also used in the table below)
 #define DEFINE_ACTOR(name, _1, _2, _3) extern ActorProfile name##_Profile;
@@ -26,7 +28,18 @@
 #undef DEFINE_ACTOR_UNSET
 
 // Actor Overlay Table definition
-#if DEBUG_FEATURES
+#ifdef LINUX
+
+// PC: All actors compiled in, treat as internal (no overlay loading)
+#define DEFINE_ACTOR(name, _1, allocType, nameString) \
+    { ROM_FILE_UNSET, NULL, NULL, NULL, &name##_Profile, nameString, allocType, 0, },
+
+#define DEFINE_ACTOR_INTERNAL(name, _1, allocType, nameString) \
+    { ROM_FILE_UNSET, NULL, NULL, NULL, &name##_Profile, nameString, allocType, 0, },
+
+#define DEFINE_ACTOR_UNSET(_0) { 0 },
+
+#elif DEBUG_FEATURES
 
 #define DEFINE_ACTOR(name, _1, allocType, nameString) \
     {                                                 \
@@ -44,6 +57,8 @@
     {                                                                                \
         ROM_FILE_UNSET, NULL, NULL, NULL, &name##_Profile, nameString, allocType, 0, \
     },
+
+#define DEFINE_ACTOR_UNSET(_0) { 0 },
 
 #else
 
@@ -65,9 +80,9 @@
         ROM_FILE_UNSET, NULL, NULL, NULL, &name##_Profile, NULL, allocType, 0, \
     },
 
-#endif
-
 #define DEFINE_ACTOR_UNSET(_0) { 0 },
+
+#endif
 
 ActorOverlay gActorOverlayTable[] = {
 #include "tables/actor_table.h"

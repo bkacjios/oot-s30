@@ -8,8 +8,13 @@
 #include "translation.h"
 #include "play_state.h"
 
+#ifdef LINUX
+#define KALEIDO_OVERLAY(name, nameString) \
+    { NULL, ROM_FILE_UNSET, NULL, NULL, 0, nameString, }
+#else
 #define KALEIDO_OVERLAY(name, nameString) \
     { NULL, ROM_FILE(ovl_##name), _ovl_##name##SegmentStart, _ovl_##name##SegmentEnd, 0, nameString, }
+#endif
 
 KaleidoMgrOverlay gKaleidoMgrOverlayTable[] = {
     KALEIDO_OVERLAY(kaleido_scope, "kaleido_scope"),
@@ -21,6 +26,16 @@ KaleidoMgrOverlay* gKaleidoMgrCurOvl = NULL;
 u8 gBossMarkState = 0;
 
 void KaleidoManager_LoadOvl(KaleidoMgrOverlay* ovl) {
+    
+
+#ifdef LINUX
+    // PC: Code already linked, just mark as loaded
+    ovl->loadedRamAddr = ovl->vramStart;
+    ovl->offset = 0;
+    gKaleidoMgrCurOvl = ovl;
+    PRINTF("KaleidoManager_LoadOvl: %s (PC stub)\n", ovl->name);
+#else
+
     LOG_UTILS_CHECK_NULL_POINTER("KaleidoArea_allocp", sKaleidoAreaPtr, "../z_kaleido_manager.c", 99);
 
     ovl->loadedRamAddr = sKaleidoAreaPtr;
@@ -34,18 +49,34 @@ void KaleidoManager_LoadOvl(KaleidoMgrOverlay* ovl) {
 
     ovl->offset = (uintptr_t)ovl->loadedRamAddr - (uintptr_t)ovl->vramStart;
     gKaleidoMgrCurOvl = ovl;
+
+#endif
+
 }
 
 void KaleidoManager_ClearOvl(KaleidoMgrOverlay* ovl) {
+#ifdef LINUX
+    // PC: Nothing to clear, code is statically linked
+    if (ovl->loadedRamAddr != NULL) {
+        ovl->loadedRamAddr = NULL;
+        ovl->offset = 0;
+        gKaleidoMgrCurOvl = NULL;
+    }
+#else
     if (ovl->loadedRamAddr != NULL) {
         ovl->offset = 0;
         bzero(ovl->loadedRamAddr, (uintptr_t)ovl->vramEnd - (uintptr_t)ovl->vramStart);
         ovl->loadedRamAddr = NULL;
         gKaleidoMgrCurOvl = NULL;
     }
+#endif
 }
 
 void KaleidoManager_Init(PlayState* play) {
+#ifdef LINUX
+    // PC: No overlay loading needed, code is statically linked
+    gKaleidoMgrCurOvl = NULL;
+#else
     s32 largestSize = 0;
     s32 size;
     u32 i;
@@ -70,6 +101,7 @@ void KaleidoManager_Init(PlayState* play) {
     PRINTF_RST();
 
     gKaleidoMgrCurOvl = NULL;
+#endif
 }
 
 void KaleidoManager_Destroy(void) {
@@ -83,6 +115,11 @@ void KaleidoManager_Destroy(void) {
 
 // NOTE: this function looks messed up and probably doesn't work how it was intended to
 void* KaleidoManager_GetRamAddr(void* vram) {
+
+#ifdef LINUX
+    // PC: vram IS the ram address, functions are linked directly
+    return vram;
+#else
     KaleidoMgrOverlay* iter = gKaleidoMgrCurOvl;
     KaleidoMgrOverlay* ovl = iter;
 
@@ -110,4 +147,6 @@ KaleidoManager_GetRamAddr_end:
     }
 
     return (void*)((uintptr_t)vram + ovl->offset);
+
+#endif
 }

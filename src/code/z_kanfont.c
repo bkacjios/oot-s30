@@ -8,6 +8,8 @@
 #include "font.h"
 #include "message.h"
 
+extern void gfx_texture_cache_invalidate(void* addr);
+
 /**
  * Loads a texture from kanji for the requested `character` into the character texture buffer
  * at `codePointIndex`. The value of `character` is the SHIFT-JIS encoding of the character.
@@ -17,6 +19,7 @@ void Font_LoadCharWide(Font* font, u16 character, u16 codePointIndex) {
     DMA_REQUEST_SYNC(&font->charTexBuf[codePointIndex],
                      (uintptr_t)_kanjiSegmentRomStart + Kanji_OffsetFromShiftJIS(character), FONT_CHAR_TEX_SIZE,
                      "../z_kanfont.c", UNK_LINE);
+    gfx_texture_cache_invalidate(&font->charTexBuf[codePointIndex]);
 #endif
 }
 
@@ -29,6 +32,7 @@ void Font_LoadChar(Font* font, u8 character, u16 codePointIndex) {
 
     DMA_REQUEST_SYNC(&font->charTexBuf[codePointIndex], (uintptr_t)_nes_font_staticSegmentRomStart + offset,
                      FONT_CHAR_TEX_SIZE, "../z_kanfont.c", 93);
+    gfx_texture_cache_invalidate(&font->charTexBuf[codePointIndex]);
 }
 
 #if PLATFORM_IQUE
@@ -50,6 +54,7 @@ void Font_LoadMessageBoxIcon(Font* font, u16 icon) {
                      (uintptr_t)_message_staticSegmentRomStart + 4 * MESSAGE_STATIC_TEX_SIZE +
                          icon * FONT_CHAR_TEX_SIZE,
                      FONT_CHAR_TEX_SIZE, "../z_kanfont.c", 100);
+    gfx_texture_cache_invalidate(font->iconBuf);
 }
 
 /**
@@ -72,6 +77,13 @@ void Font_LoadOrderedFont(Font* font) {
     len = (u32)size / 2;
     DMA_REQUEST_SYNC(font->msgBufWide, (uintptr_t)_jpn_message_data_staticSegmentRomStart + font->msgOffset, size,
                      "../z_kanfont.c", UNK_LINE);
+#ifdef LINUX
+    // The message data is a big-endian byte stream: make the wide (Shift-JIS)
+    // characters native before use
+    for (codePointIndex = 0; codePointIndex < len; codePointIndex++) {
+        font->msgBufWide[codePointIndex] = __builtin_bswap16(font->msgBufWide[codePointIndex]);
+    }
+#endif
 
     PRINTF("msg_data=%x,  msg_data0=%x   jj=%x\n", font->msgOffset, font->msgLength, len);
 
@@ -86,6 +98,7 @@ void Font_LoadOrderedFont(Font* font) {
             offset = Kanji_OffsetFromShiftJIS(font->msgBufWide[codePointIndex]);
             DMA_REQUEST_SYNC(&font->fontBuf[fontBufIndex * 8], (uintptr_t)_kanjiSegmentRomStart + offset,
                              FONT_CHAR_TEX_SIZE, "../z_kanfont.c", UNK_LINE);
+            gfx_texture_cache_invalidate(&font->fontBuf[fontBufIndex * 8]);
             fontBufIndex += FONT_CHAR_TEX_SIZE / 8;
         }
     }
@@ -112,6 +125,7 @@ void Font_LoadOrderedFont(Font* font) {
             offset = (font->msgBuf[codePointIndex] - ' ') * FONT_CHAR_TEX_SIZE;
             DMA_REQUEST_SYNC(font->fontBuf + fontBufIndex * 8, (uintptr_t)_nes_font_staticSegmentRomStart + offset,
                              FONT_CHAR_TEX_SIZE, "../z_kanfont.c", 134);
+            gfx_texture_cache_invalidate(font->fontBuf + fontBufIndex * 8);
             fontBufIndex += FONT_CHAR_TEX_SIZE / 8;
         }
     }
@@ -138,6 +152,7 @@ void Font_LoadOrderedFont(Font* font) {
             offset = Kanji_OffsetFromShiftJIS(msgBufWide[codePointIndex]);
             DMA_REQUEST_SYNC(&font->fontBuf[fontBufIndex * 8], (uintptr_t)_kanjiSegmentRomStart + offset,
                              FONT_CHAR_TEX_SIZE, "../z_kanfont.c", UNK_LINE);
+            gfx_texture_cache_invalidate(&font->fontBuf[fontBufIndex * 8]);
             fontBufIndex += FONT_CHAR_TEX_SIZE / 8;
         }
     }

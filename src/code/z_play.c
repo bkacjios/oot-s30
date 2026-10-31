@@ -546,6 +546,8 @@ void Play_Init(GameState* thisx) {
 #endif
 }
 
+extern void flush_texture_cache_external(void);
+
 void Play_Update(PlayState* this) {
     Input* input = this->state.input;
     s32 isPaused;
@@ -592,6 +594,7 @@ void Play_Update(PlayState* this) {
 
     if (FrameAdvance_Update(&this->frameAdvCtx, &input[1])) {
         if ((this->transitionMode == TRANS_MODE_OFF) && (this->transitionTrigger != TRANS_TRIGGER_OFF)) {
+            flush_texture_cache_external();
             this->transitionMode = TRANS_MODE_SETUP;
         }
 
@@ -1137,6 +1140,18 @@ void Play_DrawOverlayElements(PlayState* this) {
     }
 }
 
+#ifdef LINUX
+/* Renderer markers (s30/gfx.c): no RDP framebuffer copy, so the pause
+   background is saved and restored on the GPU */
+#include "s30_platform.h"
+#define S30_GFX_MARK_EMIT(disp, subop)  \
+    do {                                \
+        Gfx* _g = (disp)++;             \
+        _g->words.w0 = S30_GFX_MARK;    \
+        _g->words.w1 = (subop);         \
+    } while (0)
+#endif
+
 void Play_Draw(PlayState* this) {
     GraphicsContext* gfxCtx = this->state.gfxCtx;
     Lights* sp228;
@@ -1218,7 +1233,14 @@ void Play_Draw(PlayState* this) {
 #endif
             {
                 gPlayVisMono.vis.primColor.rgba = gVisMonoColor.rgba;
+#ifdef LINUX
+                // The renderer desaturates the frame with these colors
+                gDPSetColor(gfxP++, G_SETPRIMCOLOR, gPlayVisMono.vis.primColor.rgba);
+                gDPSetColor(gfxP++, G_SETENVCOLOR, gPlayVisMono.vis.envColor.rgba);
+                S30_GFX_MARK_EMIT(gfxP, S30_MARK_VISMONO);
+#else
                 VisMono_Draw(&gPlayVisMono, &gfxP);
+#endif
             }
 
             gSPEndDisplayList(gfxP++);
@@ -1237,12 +1259,16 @@ void Play_Draw(PlayState* this) {
         PreRender_SetValues(&this->pauseBgPreRender, SCREEN_WIDTH, SCREEN_HEIGHT, gfxCtx->curFrameBuffer, gZBuffer);
 
         if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_PROCESS) {
+#ifdef LINUX
+            // The background was saved on the GPU: no CPU filtering
+#else
             // Wait for the previous frame's display list to be processed,
             // so that `pauseBgPreRender.fbufSave` and `pauseBgPreRender.cvgSave` are filled with the appropriate
             // content and can be used by `PreRender_ApplyFilters` below.
             Sched_FlushTaskQueue();
 
             PreRender_ApplyFilters(&this->pauseBgPreRender);
+#endif
 
             R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_READY;
         } else if (R_PAUSE_BG_PRERENDER_STATE >= PAUSE_BG_PRERENDER_MAX) {
@@ -1250,10 +1276,14 @@ void Play_Draw(PlayState* this) {
         }
 
         if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_READY) {
+#ifdef LINUX
+            S30_GFX_MARK_EMIT(POLY_OPA_DISP, S30_MARK_BG_RESTORE);
+#else
             Gfx* gfxP = POLY_OPA_DISP;
 
             PreRender_RestoreFramebuffer(&this->pauseBgPreRender, &gfxP);
             POLY_OPA_DISP = gfxP;
+#endif
 
             goto Play_Draw_DrawOverlayElements;
         }
@@ -1273,9 +1303,11 @@ void Play_Draw(PlayState* this) {
 
         if (!DEBUG_FEATURES || (R_HREG_MODE != HREG_MODE_PLAY) ||
             (R_PLAY_DRAW_ENV_FLAGS & PLAY_ENV_DRAW_SUN_AND_MOON)) {
+#if 1
             if (!this->envCtx.sunMoonDisabled) {
                 Environment_DrawSunAndMoon(this);
             }
+#endif
         }
 
         if (!DEBUG_FEATURES || (R_HREG_MODE != HREG_MODE_PLAY) ||
@@ -1325,7 +1357,7 @@ void Play_Draw(PlayState* this) {
         }
 
         if (!DEBUG_FEATURES || (R_HREG_MODE != HREG_MODE_PLAY) || (R_PLAY_DRAW_ROOM_FLAGS != 0)) {
-            Environment_FillScreen(gfxCtx, 0, 0, 0, this->bgCoverAlpha, FILL_SCREEN_OPA);
+            Environment_FillScreen(gfxCtx, 0, 0, 0, this->bgCoverAlpha, FILL_SCREEN_XLU);
         }
 
         if (!DEBUG_FEATURES || (R_HREG_MODE != HREG_MODE_PLAY) || R_PLAY_DRAW_ACTORS) {
@@ -1376,12 +1408,18 @@ void Play_Draw(PlayState* this) {
             // The zbuffer must then stay untouched until unpausing
             this->pauseBgPreRender.fbuf = gfxCtx->curFrameBuffer;
             this->pauseBgPreRender.fbufSave = (u16*)gZBuffer;
+#ifdef LINUX
+            if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_SETUP) {
+                S30_GFX_MARK_EMIT(gfxP, S30_MARK_BG_SAVE);
+                R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_PROCESS;
+#else
             PreRender_SaveFramebuffer(&this->pauseBgPreRender, &gfxP);
             if (R_PAUSE_BG_PRERENDER_STATE == PAUSE_BG_PRERENDER_SETUP) {
                 this->pauseBgPreRender.cvgSave = (u8*)gfxCtx->curFrameBuffer;
                 PreRender_DrawCoverage(&this->pauseBgPreRender, &gfxP);
 
                 R_PAUSE_BG_PRERENDER_STATE = PAUSE_BG_PRERENDER_PROCESS;
+#endif
             } else {
                 gTransitionTileState = TRANS_TILE_PROCESS;
             }
@@ -1631,6 +1669,7 @@ void Play_GetScreenPos(PlayState* this, Vec3f* src, Vec3f* dest) {
 
     dest->x = (SCREEN_WIDTH / 2) + ((dest->x / w) * (SCREEN_WIDTH / 2));
     dest->y = (SCREEN_HEIGHT / 2) - ((dest->y / w) * (SCREEN_HEIGHT / 2));
+    dest->z = w;//(dest->z);// / w);
 }
 
 s16 Play_CreateSubCamera(PlayState* this) {

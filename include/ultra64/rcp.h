@@ -795,8 +795,14 @@
  */
 #if defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS)
 
+#ifdef LINUX
+// No N64 hardware registers on the host: reads return 0, writes are dropped
+#define IO_READ(addr)       ((void)(addr), (u32)0)
+#define IO_WRITE(addr,data) ((void)(addr), (void)(data))
+#else
 #define IO_READ(addr)       (*(vu32*)PHYS_TO_K1(addr))
 #define IO_WRITE(addr,data) (*(vu32*)PHYS_TO_K1(addr)=(u32)(data))
+#endif
 
 #define RCP_STAT_PRINT                                              \
     rmonPrintf("current=%x start=%x end=%x dpstat=%x spstat=%x\n",  \

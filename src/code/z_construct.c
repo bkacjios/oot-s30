@@ -12,6 +12,8 @@
 
 #include "assets/textures/do_action_static/do_action_static.h"
 
+extern void gfx_texture_cache_invalidate(void* addr);
+
 void Interface_Destroy(PlayState* play) {
     Map_Destroy(play);
 }
@@ -79,6 +81,8 @@ void Interface_Init(PlayState* play) {
 
     DMA_REQUEST_SYNC(interfaceCtx->doActionSegment, (uintptr_t)_do_action_staticSegmentRomStart + doActionOffset,
                      2 * DO_ACTION_TEX_SIZE, "../z_construct.c", 174);
+    gfx_texture_cache_invalidate(interfaceCtx->doActionSegment);
+    gfx_texture_cache_invalidate(interfaceCtx->doActionSegment + DO_ACTION_TEX_SIZE);
 
 #if OOT_NTSC
     if (gSaveContext.language == LANGUAGE_JPN) {
@@ -99,6 +103,7 @@ void Interface_Init(PlayState* play) {
     DMA_REQUEST_SYNC(interfaceCtx->doActionSegment + 2 * DO_ACTION_TEX_SIZE,
                      (uintptr_t)_do_action_staticSegmentRomStart + doActionOffset, DO_ACTION_TEX_SIZE,
                      "../z_construct.c", 178);
+    gfx_texture_cache_invalidate(interfaceCtx->doActionSegment + 2 * DO_ACTION_TEX_SIZE);
 
     interfaceCtx->iconItemSegment = GAME_STATE_ALLOC(&play->state, ICON_ITEM_SEGMENT_SIZE, "../z_construct.c", 190);
 
@@ -117,29 +122,34 @@ void Interface_Init(PlayState* play) {
 
                          GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[0]), ITEM_ICON_SIZE,
                          "../z_construct.c", 198);
+        gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (0 * ITEM_ICON_SIZE));
     } else if (gSaveContext.save.info.equips.buttonItems[0] != 0xFF) {
         DMA_REQUEST_SYNC(interfaceCtx->iconItemSegment + (0 * ITEM_ICON_SIZE),
 
                          GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[0]), ITEM_ICON_SIZE,
                          "../z_construct.c", 203);
+        gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (0 * ITEM_ICON_SIZE));
     }
 
     if (gSaveContext.save.info.equips.buttonItems[1] < 0xF0) {
         DMA_REQUEST_SYNC(interfaceCtx->iconItemSegment + (1 * ITEM_ICON_SIZE),
                          GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[1]), ITEM_ICON_SIZE,
                          "../z_construct.c", 209);
+        gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (1 * ITEM_ICON_SIZE));
     }
 
     if (gSaveContext.save.info.equips.buttonItems[2] < 0xF0) {
         DMA_REQUEST_SYNC(interfaceCtx->iconItemSegment + (2 * ITEM_ICON_SIZE),
                          GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[2]), ITEM_ICON_SIZE,
                          "../z_construct.c", 214);
+        gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (2 * ITEM_ICON_SIZE));
     }
 
     if (gSaveContext.save.info.equips.buttonItems[3] < 0xF0) {
         DMA_REQUEST_SYNC(interfaceCtx->iconItemSegment + (3 * ITEM_ICON_SIZE),
                          GET_ITEM_ICON_VROM(gSaveContext.save.info.equips.buttonItems[3]), ITEM_ICON_SIZE,
                          "../z_construct.c", 219);
+        gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (3 * ITEM_ICON_SIZE));
     }
 
     PRINTF("ＥＶＥＮＴ＝%d\n", ((void)0, gSaveContext.timerState));
@@ -208,6 +218,29 @@ void Interface_Init(PlayState* play) {
     R_A_BTN_COLOR(0) = A_BUTTON_R;
     R_A_BTN_COLOR(1) = A_BUTTON_G;
     R_A_BTN_COLOR(2) = A_BUTTON_B;
+
+#ifdef LINUX
+    // S30 HUD (interface.h): B the size of a C button, C-right a shoulder
+    // pill with a smaller centred icon, the "Navi" label centred on Select
+    R_ITEM_BTN_WIDTH(0) = R_ITEM_BTN_WIDTH(1);
+    R_ITEM_BTN_DD(0) = R_ITEM_BTN_DD(1);
+    R_ITEM_ICON_WIDTH(0) = R_ITEM_ICON_WIDTH(1);
+    R_ITEM_ICON_DD(0) = R_ITEM_ICON_DD(1);
+    R_ITEM_AMMO_X(0) = B_BUTTON_X + 1;
+    R_ITEM_AMMO_Y(0) = B_BUTTON_Y + 17;
+
+    R_ITEM_ICON_X(3) = C_RIGHT_BUTTON_X + (S30_SHOULDER_W - S30_SHOULDER_ICON) / 2;
+    R_ITEM_ICON_Y(3) = C_RIGHT_BUTTON_Y + (S30_SHOULDER_H - S30_SHOULDER_ICON) / 2;
+    R_ITEM_ICON_WIDTH(3) = S30_SHOULDER_ICON;
+    R_ITEM_ICON_DD(3) = (16 << 10) / S30_SHOULDER_ICON; // drawn with DD << 1: 32 texels over the icon
+    R_ITEM_AMMO_X(3) = R_ITEM_ICON_X(3) + 1;
+    R_ITEM_AMMO_Y(3) = C_RIGHT_BUTTON_Y + S30_SHOULDER_H - 8;
+
+    R_C_UP_BTN_X = C_UP_BUTTON_X;
+    R_C_UP_BTN_Y = C_UP_BUTTON_Y;
+    R_C_UP_ICON_X = C_UP_BUTTON_X - 16;
+    R_C_UP_ICON_Y = C_UP_BUTTON_Y - 4;
+#endif
 }
 
 #define TEXTBOX_SEGMENT_SIZE \
@@ -530,10 +563,19 @@ void Regs_InitDataImpl(void) {
 #if OOT_NTSC
     R_B_LABEL_SCALE(LANGUAGE_JPN) = 100;
     R_B_LABEL_SCALE(LANGUAGE_ENG) = 109;
+#ifdef LINUX
+    // Same place relative to the B button's centre as on N64 (B moved and is
+    // 27 px instead of 29: interface.h)
+    R_B_LABEL_X(LANGUAGE_JPN) = B_BUTTON_X - 10;
+    R_B_LABEL_X(LANGUAGE_ENG) = B_BUTTON_X - 13;
+    R_B_LABEL_Y(LANGUAGE_JPN) = B_BUTTON_Y + 5;
+    R_B_LABEL_Y(LANGUAGE_ENG) = B_BUTTON_Y + 4;
+#else
     R_B_LABEL_X(LANGUAGE_JPN) = 151;
     R_B_LABEL_X(LANGUAGE_ENG) = 148;
     R_B_LABEL_Y(LANGUAGE_JPN) = 23;
     R_B_LABEL_Y(LANGUAGE_ENG) = 22;
+#endif
     R_A_LABEL_Z(LANGUAGE_JPN) = -380;
     R_A_LABEL_Z(LANGUAGE_ENG) = -350;
 #else

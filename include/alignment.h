@@ -7,6 +7,9 @@
 #define ALIGN64(val) (((val) + 0x3F) & ~0x3F)
 #define ALIGN256(val) (((val) + 0xFF) & ~0xFF)
 
+#define ALIGN4096(val) (((val) + 4095) & ~4095)
+
+
 #ifdef __GNUC__
 #define ALIGNED(n)  __attribute__ ((aligned (n)))
 #else
