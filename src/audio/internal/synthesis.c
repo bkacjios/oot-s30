@@ -1217,7 +1217,6 @@ Acmd* AudioSynth_ProcessNote(s32 noteIndex, NoteSubEu* noteSubEu, NoteSynthesisS
         AudioSynth_LoadFilterSize(cmd++, aiBufLen * SAMPLE_SIZE, filter);
         AudioSynth_LoadFilterBuffer(cmd++, flags, DMEM_TEMP, synthState->synthesisBuffers->mixEnvelopeState);
     }
-#if 0
     // Apply the comb filter to the mono-signal by taking the signal with a small temporal offset,
     // and adding it back to itself
     combFilterSize = noteSubEu->combFilterSize;
@@ -1239,7 +1238,6 @@ Acmd* AudioSynth_ProcessNote(s32 noteIndex, NoteSubEu* noteSubEu, NoteSynthesisS
     } else {
         synthState->combFilterNeedsInit = true;
     }
-#endif
 #ifdef LINUX
     haasEffectDelaySide = HAAS_EFFECT_DELAY_NONE;
 #else

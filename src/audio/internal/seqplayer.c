@@ -21,6 +21,13 @@
 #include "ultra64.h"
 #include "audio.h"
 
+#ifdef LINUX
+// Sequence data stays big-endian in RAM
+#define SEQ_U16(x) __builtin_bswap16(x)
+#else
+#define SEQ_U16(x) (x)
+#endif
+
 static_assert(MML_VERSION == MML_VERSION_OOT, "This file implements the OoT version of the MML");
 
 #define PORTAMENTO_IS_SPECIAL(x) ((x).mode & 0x80)
@@ -1655,7 +1662,7 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
 
                 case ASEQ_OP_CHAN_LDSEQTOPTR:
                     cmdArgU16 = (u16)cmdArgs[0];
-                    channel->unk_22 = *(u16*)(seqPlayer->seqData + (u32)(cmdArgU16 + scriptState->value * 2));
+                    channel->unk_22 = SEQ_U16(*(u16*)(seqPlayer->seqData + (u32)(cmdArgU16 + scriptState->value * 2)));
                     break;
 
                 case ASEQ_OP_CHAN_PTRTODYNTBL:
@@ -1663,7 +1670,7 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
                     break;
 
                 case ASEQ_OP_CHAN_DYNTBLTOPTR:
-                    channel->unk_22 = ((u16*)(channel->dynTable))[scriptState->value];
+                    channel->unk_22 = SEQ_U16(((u16*)(channel->dynTable))[scriptState->value]);
                     break;
 
                 case ASEQ_OP_CHAN_DYNTBLV:

@@ -301,7 +301,9 @@ def gen_audio(tools, cfg, ext, bld, jobs, force):
     run([tools["atblgen"], "--fonts", f"{A}/soundfont_table.h"] + xmls["soundfonts"])
     log("audio: samplebank_table.h soundfont_table.h")
     # 5. size headers from the ROM's own audio tables (N64 build: afile_sizes on .o)
-    syms = rom_meta.audio_symbols(cfg)
+    _, mkdmadata = rom_meta.ensure_host_tools()
+    dnames = rom_meta.dma_order(cfg, mkdmadata, rom_meta.preprocess_spec(cfg))
+    syms = rom_meta.audio_symbols(cfg, rom_meta.audio_blobs(cfg, dnames))
     for prefix, guard, num in (("Soundfont", "SOUNDFONT_SIZES_H_", "NUM_SOUNDFONTS"),
                                ("Sequence", "SEQUENCE_SIZES_H_", "NUM_SEQUENCES")):
         entries = sorted(
