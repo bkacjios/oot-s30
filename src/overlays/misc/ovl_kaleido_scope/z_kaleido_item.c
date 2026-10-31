@@ -545,7 +545,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 // the N64 values (centre x: 660 + 10.9 per pixel from 240.5, centre y:
 // 1100 - 11.25 per pixel from 31.5); C-right is the shoulder pill's icon
 static s16 sCButtonPosX[] = { 856, 1096, 1265 };
-static s16 sCButtonPosY[] = { 1280, 1044, 1342 };
+static s16 sCButtonPosY[] = { 1280, 1044, 1308 };
 #else
 static s16 sCButtonPosX[] = { 660, 900, 1140 };
 static s16 sCButtonPosY[] = { 1100, 920, 1100 };

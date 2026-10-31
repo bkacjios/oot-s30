@@ -208,7 +208,7 @@ typedef struct InterfaceContext {
 
 // Shoulder pill: corner and size; its item icon is centred, S30_SHOULDER_ICON px
 #define C_RIGHT_BUTTON_X 274
-#define C_RIGHT_BUTTON_Y 0
+#define C_RIGHT_BUTTON_Y 3 // off the screen's top edge
 #define S30_SHOULDER_W 44
 #define S30_SHOULDER_H 20
 #define S30_SHOULDER_ICON 20
