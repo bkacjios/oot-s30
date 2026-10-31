@@ -188,7 +188,7 @@ OBJECTS := \
     $(BUILD_DIR)/src/code/z_vimode.o \
     $(BUILD_DIR)/src/code/z_viscvg.o \
     $(BUILD_DIR)/src/code/z_vismono.o \
-    $(BUILD_DIR)/src/code/z_viszbuf.o \
+    $(BUILD_DIR)/src/code/z_viszbuffer.o \
     $(BUILD_DIR)/src/code/z_vr_box.o \
     $(BUILD_DIR)/src/code/z_vr_box_draw.o \
     $(BUILD_DIR)/src/code/z_demo.o \

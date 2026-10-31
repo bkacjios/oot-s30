@@ -2,7 +2,7 @@
 #include "font.h"
 
 /**
- * s32 Kanji_OffsetFromShiftJIS(s32 sjis);
+ * s32 KanjiTex_CodepointToOffset(s32 sjis);
  *
  * Returns the offset of the glyph texture data in the file `kanji` corresponding
  * to a given 2-byte Shift-JIS codepoint. No range validity check is carried out.
@@ -20,7 +20,7 @@
  * @remark Almost identical to "LeoGetKadr" from libleo.
  */
 
-s32 Kanji_OffsetFromShiftJIS(s32 sjis);
+s32 KanjiTex_CodepointToOffset(s32 sjis);
 
 /**
  * Index table, formatting follows conventional Shift-JIS character table layout,
@@ -120,7 +120,7 @@ static const u16 sNonKanjiIndices[] = {
     /* 0x87F_ */ 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0307, 0x0308, 0x0309,
 };
 
-s32 Kanji_OffsetFromShiftJIS(s32 sjis) {
+s32 KanjiTex_CodepointToOffset(s32 sjis) {
     u32 byte1 = (u32)sjis >> 8;
     u32 byte2 = sjis & 0xFF;
 

@@ -74,8 +74,10 @@ void aUnkCmd19Impl(uint8_t f, uint16_t count, uint16_t out_addr, uint16_t in_add
 #define aClearBuffer(pkt, d, c) \
     aClearBufferImpl(d, c)
 
-#define aLoadBuffer(pkt, s, d, c, copy) \
-    aLoadBufferImpl(s, d, c, copy)
+// A copy into DMEM, except the compressed sample data (synthesis.c calls
+// aLoadBufferImpl with copy 0 there: the decoder reads it in place)
+#define aLoadBuffer(pkt, s, d, c) \
+    aLoadBufferImpl(s, d, c, 1)
 
 #define aSaveBuffer(pkt, s, d, c) \
     aSaveBufferImpl(s, (int16_t*)(d), c)

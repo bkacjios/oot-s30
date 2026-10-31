@@ -1,9 +1,12 @@
-#include "kanread.h"
+#include "versions.h"
+#include "attributes.h"
+#if OOT_NTSC
+#include "kanji_tex.h"
+#endif
 #include "message_data_static.h"
 #include "printf.h"
 #include "segment_symbols.h"
 #include "translation.h"
-#include "versions.h"
 #include "dma.h"
 #include "font.h"
 #include "message.h"
@@ -14,12 +17,14 @@ extern void gfx_texture_cache_invalidate(void* addr);
  * Loads a texture from kanji for the requested `character` into the character texture buffer
  * at `codePointIndex`. The value of `character` is the SHIFT-JIS encoding of the character.
  */
-void Font_LoadCharWide(Font* font, u16 character, u16 codePointIndex) {
 #if OOT_NTSC
+void Font_LoadCharWide(Font* font, u16 character, u16 codePointIndex) {
     DMA_REQUEST_SYNC(&font->charTexBuf[codePointIndex],
-                     (uintptr_t)_kanjiSegmentRomStart + Kanji_OffsetFromShiftJIS(character), FONT_CHAR_TEX_SIZE,
+                     (uintptr_t)_kanjiSegmentRomStart + KanjiTex_CodepointToOffset(character), FONT_CHAR_TEX_SIZE,
                      "../z_kanfont.c", UNK_LINE);
     gfx_texture_cache_invalidate(&font->charTexBuf[codePointIndex]);
+#else
+void Font_LoadCharWide(UNUSED Font* font, UNUSED u16 character, UNUSED u16 codePointIndex) {
 #endif
 }
 
@@ -68,7 +73,9 @@ void Font_LoadOrderedFont(Font* font) {
     s32 fontBufIndex;
     u32 offset;
     const char* messageDataStart;
+#if PLATFORM_IQUE
     u16* msgBufWide;
+#endif
 
 #if OOT_NTSC && !PLATFORM_IQUE
     messageDataStart = (const char*)_jpn_message_data_staticSegmentStart;
@@ -95,7 +102,7 @@ void Font_LoadOrderedFont(Font* font) {
         }
 
         if (font->msgBufWide[codePointIndex] != MESSAGE_WIDE_NEWLINE) {
-            offset = Kanji_OffsetFromShiftJIS(font->msgBufWide[codePointIndex]);
+            offset = KanjiTex_CodepointToOffset(font->msgBufWide[codePointIndex]);
             DMA_REQUEST_SYNC(&font->fontBuf[fontBufIndex * 8], (uintptr_t)_kanjiSegmentRomStart + offset,
                              FONT_CHAR_TEX_SIZE, "../z_kanfont.c", UNK_LINE);
             gfx_texture_cache_invalidate(&font->fontBuf[fontBufIndex * 8]);
@@ -149,7 +156,7 @@ void Font_LoadOrderedFont(Font* font) {
         }
 
         if (msgBufWide[codePointIndex] != MESSAGE_WIDE_NEWLINE) {
-            offset = Kanji_OffsetFromShiftJIS(msgBufWide[codePointIndex]);
+            offset = KanjiTex_CodepointToOffset(msgBufWide[codePointIndex]);
             DMA_REQUEST_SYNC(&font->fontBuf[fontBufIndex * 8], (uintptr_t)_kanjiSegmentRomStart + offset,
                              FONT_CHAR_TEX_SIZE, "../z_kanfont.c", UNK_LINE);
             gfx_texture_cache_invalidate(&font->fontBuf[fontBufIndex * 8]);

@@ -4,6 +4,7 @@
 #include "attributes.h"
 #include "gfx.h"
 #include "printf.h"
+#include "stack_pad.h"
 #include "sys_ucode.h"
 #include "terminal.h"
 #include "translation.h"
@@ -52,7 +53,7 @@ void Jpeg_ScheduleDecoderTask(JpegContext* ctx) {
     };
 
     JpegWork* workBuf = ctx->workBuf;
-    s32 pad[2];
+    STACK_PADS(s32, 2);
 
     workBuf->taskData.address = OS_K0_TO_PHYSICAL(&workBuf->data);
     workBuf->taskData.mode = ctx->mode;
@@ -480,7 +481,7 @@ void Jpeg_ParseMarkers(u8* ptr, JpegContext* ctx) {
     }
 }
 
-s32 Jpeg_Decode(void* data, void* zbuffer, void* work, u32 workSize) {
+s32 Jpeg_Decode(void* data, void* zbuffer, void* work, UNUSED_NDEBUG u32 workSize) {
     s32 y;
     s32 x;
     u32 j;

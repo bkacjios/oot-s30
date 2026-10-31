@@ -18,6 +18,7 @@
 #include "array_count.h"
 #include "assert.h"
 #include "attributes.h"
+#include "stack_pad.h"
 #include "ultra64.h"
 #include "audio.h"
 
@@ -330,7 +331,7 @@ void AudioSeq_InitSequenceChannel(SequenceChannel* channel) {
  */
 s32 AudioSeq_SeqChannelSetLayer(SequenceChannel* channel, s32 layerIndex) {
     SequenceLayer* layer;
-    s32 pad;
+    STACK_PAD(s32);
 
     if (channel->layers[layerIndex] == NULL) {
         layer = AudioSeq_AudioListPopBack(&gAudioCtx.layerFreeList);
@@ -439,7 +440,7 @@ void AudioSeq_SequencePlayerSetupChannels(SequencePlayer* seqPlayer, u16 channel
 /**
  * original name: Nas_DeAllocSub
  */
-void AudioSeq_SequencePlayerDisableChannels(SequencePlayer* seqPlayer, u16 channelBitsUnused) {
+void AudioSeq_SequencePlayerDisableChannels(SequencePlayer* seqPlayer, UNUSED u16 channelBits) {
     SequenceChannel* channel;
     s32 i;
 
@@ -483,9 +484,9 @@ void AudioSeq_SequencePlayerDisableAsFinished(SequencePlayer* seqPlayer) {
  * original name: Nas_ReleaseGroup
  */
 void AudioSeq_SequencePlayerDisable(SequencePlayer* seqPlayer) {
+#if !(OOT_VERSION < NTSC_1_1 || !PLATFORM_N64)
     s32 finished = 0;
 
-#if !(OOT_VERSION < NTSC_1_1 || !PLATFORM_N64)
     if (seqPlayer->finished == 1) {
         finished = 1;
     }
@@ -1572,7 +1573,7 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
                 case ASEQ_OP_CHAN_DYNCALL:
                     if (scriptState->value != -1) {
                         data = (*channel->dynTable)[scriptState->value];
-                        //! @bug: Missing a stack depth check here
+                        //! @bug Missing a stack depth check here
                         scriptState->stack[scriptState->depth++] = scriptState->pc;
                         cmdArgU16 = (u16)((data[0] << 8) + data[1]);
                         scriptState->pc = seqPlayer->seqData + cmdArgU16;
@@ -1595,7 +1596,7 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
                     channel->panChannelWeight = *data++;
                     channel->targetReverbVol = *data++;
                     channel->reverbIndex = *data++;
-                    //! @bug: Not marking reverb state as changed
+                    //! @bug Not marking reverb state as changed
                     channel->changes.s.pan = true;
                     break;
 
@@ -1609,7 +1610,7 @@ void AudioSeq_SequenceChannelProcessScript(SequenceChannel* channel) {
                     channel->panChannelWeight = AudioSeq_ScriptReadU8(scriptState);
                     channel->targetReverbVol = AudioSeq_ScriptReadU8(scriptState);
                     channel->reverbIndex = AudioSeq_ScriptReadU8(scriptState);
-                    //! @bug: Not marking reverb state as changed
+                    //! @bug Not marking reverb state as changed
                     channel->changes.s.pan = true;
                     break;
 
@@ -1835,7 +1836,7 @@ void AudioSeq_SequencePlayerProcessSequence(SequencePlayer* seqPlayer) {
     u8* data;
     u8* data2;
     u8* data3;
-    s32 pad;
+    STACK_PAD(s32);
     s32 dummy;
     s32 delay;
 
@@ -2158,7 +2159,7 @@ void AudioSeq_ProcessSequences(s32 arg0) {
     SequencePlayer* seqPlayer;
     u32 i;
 
-    gAudioCtx.noteSubEuOffset = (gAudioCtx.audioBufferParameters.ticksPerUpdate - arg0 - 1) * gAudioCtx.numNotes;
+    gAudioCtx.sampleStateOffset = (gAudioCtx.audioBufferParameters.ticksPerUpdate - arg0 - 1) * gAudioCtx.numNotes;
 
     for (i = 0; i < (u32)gAudioCtx.audioBufferParameters.numSequencePlayers; i++) {
         seqPlayer = &gAudioCtx.seqPlayers[i];

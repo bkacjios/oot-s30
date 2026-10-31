@@ -9,6 +9,7 @@
 #include "regs.h"
 #include "segment_symbols.h"
 #include "sfx.h"
+#include "stack_pad.h"
 #include "sys_matrix.h"
 #include "terminal.h"
 #include "translation.h"
@@ -17,7 +18,7 @@
 #include "player.h"
 #include "save.h"
 
-#include "assets/objects/gameplay_keep/gameplay_keep.h"
+#include "assets/objects/gameplay_keep/compass_arrow.h"
 #include "assets/textures/parameter_static/parameter_static.h"
 
 extern void gfx_texture_cache_invalidate(void* addr);
@@ -365,7 +366,7 @@ void Map_Init(PlayState* play) {
 }
 
 void Minimap_DrawCompassIcons(PlayState* play) {
-    s32 pad;
+    STACK_PAD(s32);
     Player* player = GET_PLAYER(play);
     s16 tempX, tempZ;
 
@@ -412,7 +413,7 @@ void Minimap_DrawCompassIcons(PlayState* play) {
 }
 
 void Minimap_Draw(PlayState* play) {
-    s32 pad[2];
+    STACK_PADS(s32, 2);
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
     s32 mapIndex = gSaveContext.mapIndex;
 

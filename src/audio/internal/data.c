@@ -563,9 +563,9 @@ EnvelopePoint gDefaultEnvelope[] = {
 };
 #endif
 
-NoteSubEu gZeroNoteSub = { 0 };
+NoteSampleState gZeroNoteSampleState = { 0 };
 
-NoteSubEu gDefaultNoteSub = {
+NoteSampleState gDefaultNoteSampleState = {
     { 1, 1, 0, 0, 0, 0, 0, 0 }, { 0 }, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0,
 };
 

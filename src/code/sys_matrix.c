@@ -4,6 +4,7 @@
 #include "fault.h"
 #endif
 #include "printf.h"
+#include "stack_pad.h"
 #include "sys_matrix.h"
 #include "ultra64.h"
 #include "z_lib.h"
@@ -799,7 +800,7 @@ void Matrix_MtxFToYXZRotS(MtxF* mf, Vec3s* rotDest, s32 flag) {
     f32 temp;
     f32 temp2;
     f32 temp3;
-    f32 temp4;
+    STACK_PAD(s32);
 
     temp = mf->xz;
     temp *= temp;
@@ -852,7 +853,7 @@ void Matrix_MtxFToZYXRotS(MtxF* mf, Vec3s* rotDest, s32 flag) {
     f32 temp;
     f32 temp2;
     f32 temp3;
-    f32 temp4;
+    STACK_PAD(s32);
 
     temp = mf->xx;
     temp *= temp;

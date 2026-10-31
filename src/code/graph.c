@@ -1,4 +1,5 @@
 #include "libc64/malloc.h"
+#include "attributes.h"
 #include "libc64/sprintf.h"
 #include "libu64/debug.h"
 #include "array_count.h"
@@ -16,6 +17,7 @@
 #include "regs.h"
 #include "setup_state.h"
 #include "speed_meter.h"
+#include "stack_pad.h"
 #include "sys_cfb.h"
 #include "sys_debug_controller.h"
 #include "sys_ucode.h"
@@ -61,13 +63,21 @@ static GfxPool* Graph_GetPool(int idx) {
 FaultClient sGraphFaultClient;
 
 UCodeInfo D_8012D230[3] = {
+#ifndef F3DEX_GBI_PL
+    { UCODE_TYPE_F3DZEX, gspF3DZEX2_NoN_fifoTextStart },
+#else
     { UCODE_TYPE_F3DZEX, gspF3DZEX2_NoN_PosLight_fifoTextStart },
+#endif
     { UCODE_TYPE_UNK, NULL },
     { UCODE_TYPE_S2DEX, gspS2DEX2d_fifoTextStart },
 };
 
 UCodeInfo D_8012D248[3] = {
+#ifndef F3DEX_GBI_PL
+    { UCODE_TYPE_F3DZEX, gspF3DZEX2_NoN_fifoTextStart },
+#else
     { UCODE_TYPE_F3DZEX, gspF3DZEX2_NoN_PosLight_fifoTextStart },
+#endif
     { UCODE_TYPE_UNK, NULL },
     { UCODE_TYPE_S2DEX, gspS2DEX2d_fifoTextStart },
 };
@@ -92,7 +102,11 @@ void Graph_DisassembleUCode(Gfx* workBuf) {
         disassembler.enableLog = R_UCODE_DISAS_LOG_LEVEL;
 
         UCodeDisas_RegisterUCode(&disassembler, ARRAY_COUNT(D_8012D230), D_8012D230);
+#ifndef F3DEX_GBI_PL
+        UCodeDisas_SetCurUCode(&disassembler, gspF3DZEX2_NoN_fifoTextStart);
+#else
         UCodeDisas_SetCurUCode(&disassembler, gspF3DZEX2_NoN_PosLight_fifoTextStart);
+#endif
 
         UCodeDisas_Disassemble(&disassembler, workBuf);
 
@@ -131,7 +145,11 @@ void Graph_UCodeFaultClient(Gfx* workBuf) {
     UCodeDisas_Init(&disassembler);
     disassembler.enableLog = true;
     UCodeDisas_RegisterUCode(&disassembler, ARRAY_COUNT(D_8012D248), D_8012D248);
+#ifndef F3DEX_GBI_PL
+    UCodeDisas_SetCurUCode(&disassembler, gspF3DZEX2_NoN_fifoTextStart);
+#else
     UCodeDisas_SetCurUCode(&disassembler, gspF3DZEX2_NoN_PosLight_fifoTextStart);
+#endif
     UCodeDisas_Disassemble(&disassembler, workBuf);
     UCodeDisas_Destroy(&disassembler);
 }
@@ -157,6 +175,13 @@ void Graph_InitTHGA(GraphicsContext* gfxCtx) {
     gfxCtx->overlayBuffer = pool->overlayBuffer;
     gfxCtx->workBuffer = pool->workBuffer;
 
+    //! @bug fbIdx is a signed integer that can overflow into the negatives. When compiled with a C99+ compiler or IDO,
+    //! the remainder operator will yield -1 for odd negative values of fbIdx.
+    //! This causes SysCfb_GetFbPtr to read beyond the bounds of an array when retrieving the framebuffer pointer, which
+    //! will likely crash the game.
+    //!
+    //! This isn't an issue in practice. In the worst case scenario with the game operating at a consistent 60 FPS,
+    //! it would take approximately 414.25 days of continuous operation for fbIdx to overflow.
     gfxCtx->curFrameBuffer = SysCfb_GetFbPtr(gfxCtx->fbIdx % 2);
     gfxCtx->unk_014 = 0;
 }
@@ -200,7 +225,7 @@ void Graph_Init(GraphicsContext* gfxCtx) {
 #endif
 }
 
-void Graph_Destroy(GraphicsContext* gfxCtx) {
+void Graph_Destroy(UNUSED GraphicsContext* gfxCtx) {
 #if DEBUG_FEATURES
     func_800D3210();
     Fault_RemoveClient(&sGraphFaultClient);
@@ -497,7 +522,7 @@ OVLdl = gfxCtx->overlayBuffer; */
 
     {
         OSTime timeNow = osGetTime();
-        s32 pad;
+        STACK_PAD(s32);
 
         gRSPGfxTimeTotal = gRSPGfxTimeAcc;
         gRSPAudioTimeTotal = gRSPAudioTimeAcc;
@@ -529,8 +554,7 @@ OVLdl = gfxCtx->overlayBuffer; */
 #endif
 }
 
-
-void Graph_ThreadEntry(void* arg0) {
+void Graph_ThreadEntry(UNUSED void* arg) {
     GraphicsContext gfxCtx;
     GameState* gameState;
     u32 size;
@@ -583,7 +607,7 @@ void Graph_ThreadEntry(void* arg0) {
 }
 
 void* Graph_Alloc(GraphicsContext* gfxCtx, size_t size) {
-    TwoHeadGfxArena* thga = &gfxCtx->polyOpa;
+    UNUSED_NDEBUG TwoHeadGfxArena* thga = &gfxCtx->polyOpa;
 
     if (HREG(59) == 1) {
         PRINTF("graph_alloc siz=%d thga size=%08x bufp=%08x head=%08x tail=%08x\n", size, thga->size, thga->start,
@@ -593,7 +617,7 @@ void* Graph_Alloc(GraphicsContext* gfxCtx, size_t size) {
 }
 
 void* Graph_Alloc2(GraphicsContext* gfxCtx, size_t size) {
-    TwoHeadGfxArena* thga = &gfxCtx->polyOpa;
+    UNUSED_NDEBUG TwoHeadGfxArena* thga = &gfxCtx->polyOpa;
 
     if (HREG(59) == 1) {
         PRINTF("graph_alloc siz=%d thga size=%08x bufp=%08x head=%08x tail=%08x\n", size, thga->size, thga->start,

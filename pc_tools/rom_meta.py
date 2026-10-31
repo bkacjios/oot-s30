@@ -190,7 +190,9 @@ def parse_spec_fields(spec_path):
 def segment_bases(cfg, mkldscript, spec_path):
     """VRAM base per segment, via mkldscript (proven byte-identical to the .ld)."""
     ld = os.path.join(REPO, "build_assets", "meta", "oot.ld")
-    subprocess.run([mkldscript, spec_path, ld], check=True)
+    # The segment and makerom object directories only name inputs in the
+    # script (upstream partial linking); the bases come from the section lines
+    subprocess.run([mkldscript, spec_path, ld, "build/segments", "build/makerom"], check=True)
     bases = {}
     for m in re.finditer(r'\.\.(\w+)\s+(0x[0-9A-Fa-f]+)\s*:', open(ld).read()):
         bases[m.group(1)] = int(m.group(2), 16)

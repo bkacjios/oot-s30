@@ -14,6 +14,9 @@
 #define ENV_ARG(env, idx)   ((env)[(idx)].arg)
 #endif
 
+/**
+ * original name: __Nas_CallWaveProcess_Sub
+ */
 void Audio_SequenceChannelProcessSound(SequenceChannel* channel, s32 recalculateVolume, s32 applyBend) {
     f32 channelVolume;
     f32 chanFreqScale;
@@ -62,6 +65,9 @@ void Audio_SequenceChannelProcessSound(SequenceChannel* channel, s32 recalculate
     channel->changes.asByte = 0;
 }
 
+/**
+ * original name: Nas_MainCtrl
+ */
 void Audio_SequencePlayerProcessSound(SequencePlayer* seqPlayer) {
     s32 i;
 
@@ -97,6 +103,9 @@ void Audio_SequencePlayerProcessSound(SequencePlayer* seqPlayer) {
     seqPlayer->recalculateVolume = false;
 }
 
+/**
+ * original name: Nas_SweepCalculator
+ */
 f32 Audio_GetPortamentoFreqScale(Portamento* portamento) {
     u32 loResCur;
     f32 portamentoFreq;
@@ -114,6 +123,9 @@ f32 Audio_GetPortamentoFreqScale(Portamento* portamento) {
     return portamentoFreq;
 }
 
+/**
+ * original name: Nas_ModTableRead
+ */
 s16 Audio_GetVibratoPitchChange(VibratoState* vib) {
     s32 index;
 
@@ -122,6 +134,9 @@ s16 Audio_GetVibratoPitchChange(VibratoState* vib) {
     return vib->curve[index];
 }
 
+/**
+ * original name: Nas_Modulator
+ */
 f32 Audio_GetVibratoFreqScale(VibratoState* vib) {
     static f32 D_80130510 = 0.0f;
     static s32 D_80130514 = 0;
@@ -186,6 +201,9 @@ f32 Audio_GetVibratoFreqScale(VibratoState* vib) {
     return result;
 }
 
+/**
+ * original name: Nas_ChannelModulation
+ */
 void Audio_NoteVibratoUpdate(Note* note) {
     if (note->playbackState.portamento.mode != 0) {
         note->playbackState.portamentoFreqScale = Audio_GetPortamentoFreqScale(&note->playbackState.portamento);
@@ -195,6 +213,9 @@ void Audio_NoteVibratoUpdate(Note* note) {
     }
 }
 
+/**
+ * original name: Nas_ChannelModInit
+ */
 void Audio_NoteVibratoInit(Note* note) {
     VibratoState* vib;
     SequenceChannel* channel;
@@ -223,12 +244,18 @@ void Audio_NoteVibratoInit(Note* note) {
     vib->delay = channel->vibratoDelay;
 }
 
+/**
+ * original name: Nas_SweepInit
+ */
 void Audio_NotePortamentoInit(Note* note) {
     note->playbackState.portamentoFreqScale = 1.0f;
     note->playbackState.portamento = note->playbackState.parentLayer->portamento;
 }
 
-void Audio_AdsrInit(AdsrState* adsr, EnvelopePoint* envelope, s16* volOut) {
+/**
+ * original name: Nas_EnvInit
+ */
+void Audio_AdsrInit(AdsrState* adsr, EnvelopePoint* envelope, UNUSED s16* volOut) {
     adsr->action.asByte = 0;
     adsr->delay = 0;
     adsr->envelope = envelope;
@@ -239,6 +266,9 @@ void Audio_AdsrInit(AdsrState* adsr, EnvelopePoint* envelope, s16* volOut) {
     // removed, but the function parameter was forgotten and remains.)
 }
 
+/**
+ * original name: Nas_EnvProcess
+ */
 f32 Audio_AdsrUpdate(AdsrState* adsr) {
     u8 state = adsr->action.s.state;
 
