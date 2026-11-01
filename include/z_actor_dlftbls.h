@@ -70,5 +70,9 @@ extern s32 gMaxActorId; // original name: "MaxProfile"
 void ActorOverlayTable_LogPrint(void);
 void ActorOverlayTable_Init(void);
 void ActorOverlayTable_Cleanup(void);
+#ifdef LINUX
+void ActorOverlayTable_LoadStatics(s32 id);
+void ActorOverlayTable_UnloadStatics(s32 id);
+#endif
 
 #endif

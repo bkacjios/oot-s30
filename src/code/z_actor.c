@@ -3285,6 +3285,9 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     ASSERT(overlayEntry->numLoaded < 255, "actor_dlftbl->clients < 255", "../z_actor.c", 7031);
 
     overlayEntry->numLoaded++;
+#ifdef LINUX
+    ActorOverlayTable_LoadStatics(overlayEntry - gActorOverlayTable);
+#endif
 
     if (1) {}
 
@@ -3422,6 +3425,14 @@ Actor* Actor_Delete(ActorContext* actorCtx, Actor* actor, PlayState* play) {
 
     ZELDA_ARENA_FREE(actor, "../z_actor.c", 7242);
 
+#ifdef LINUX
+    // Linked-in overlays: the last instance gone frees the overlay (a
+    // persistent one stays until the play state ends: ActorOverlayTable_Cleanup)
+    overlayEntry->numLoaded--;
+    if ((overlayEntry->numLoaded == 0) && !(overlayEntry->allocType & ACTOROVL_ALLOC_PERSISTENT)) {
+        ActorOverlayTable_UnloadStatics(overlayEntry - gActorOverlayTable);
+    }
+#endif
     if (overlayEntry->vramStart == NULL) {
         ACTOR_DEBUG_PRINTF(T("オーバーレイではありません\n", "Not an overlay\n"));
     } else {
