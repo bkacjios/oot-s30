@@ -1765,18 +1765,84 @@ static void handle_vtx(u32 w0, u32 w1) {
         }
         // F3DEX2 NoN: no near-plane clipping (first-person items between the
         // eye and the near plane still draw), the RDP clamping each pixel's
-        // depth. Clamped per triangle in tri(): clamping this vertex alone
-        // would pull the depth of a whole large triangle (ground crossing the
-        // near plane) forward over everything
+        // depth. Done in tri() (split at the plane): clamping this vertex
+        // alone would pull the depth of a whole large triangle (ground
+        // crossing the near plane) forward over everything
         if (d->w > 0.0f && d->z < -d->w) {
             d->clip |= CLIP_NEAR;
         }
     }
 }
 
+/* Depth layout: NDC [-1, -1 + NEAR_SLICE) holds what is in front of the near
+   plane (NoN draws it; the RDP clamps its depth), [-1 + NEAR_SLICE, 1] the
+   rest. Inside the slice depth goes by -w/z (1 at the plane, towards 0 at
+   the eye), so close-up pieces (a first-person item and the hand holding
+   it) keep their order instead of all fighting at one depth; the far range
+   is mapped linearly in clip space (exact interpolation) and meets the
+   slice at the plane. */
+#define NEAR_SLICE (1.0f / 64.0f)
+
+static float depth_z(const RspVtx* p, int inNear) {
+    if (inNear) {
+        float f = p->z < -p->w ? -p->w / p->z : 1.0f;
+        return p->w * (-1.0f + NEAR_SLICE * f);
+    }
+    return p->z * (1.0f - NEAR_SLICE / 2.0f) + p->w * (NEAR_SLICE / 2.0f);
+}
+
+/* An NDC depth from the game (depth probes) in the same layout */
+static float depth_ndc(float z) {
+    return z < -1.0f ? -1.0f + NEAR_SLICE * (-1.0f / z) : z * (1.0f - NEAR_SLICE / 2.0f) + NEAR_SLICE / 2.0f;
+}
+
+/* One vertex into the batch; nearest: in front of the near plane */
+static void emit_vertex(const RspVtx* p, int nearest) {
+    float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
+    float col[4] = { p->r, p->g, p->b, p->a };
+
+    if (rsp.texOn) {
+        tile_uv_fast(rsp.texTile, p->u, p->v, &u0, &v0);
+        tile_uv_fast(rsp.texTile + 1, p->u, p->v, &u1, &v1);
+    }
+    push_vertex(p->x, p->y, depth_z(p, nearest), p->w, col, u0, v0, u1, v1, (rsp.geom & G_FOG) ? p->a : 0.0f);
+}
+
+/* A polygon (3-4 vertices, in order) as a fan */
+static void emit_polygon(const RspVtx* p, int n, int nearest) {
+    int i;
+
+    for (i = 1; i + 1 < n; i++) {
+        begin_batch(0);
+        emit_vertex(&p[0], nearest);
+        emit_vertex(&p[i], nearest);
+        emit_vertex(&p[i + 1], nearest);
+    }
+}
+
+/* Point of the edge a-b on the near plane (z = -w), every attribute linear
+   in clip space */
+static RspVtx near_point(const RspVtx* a, const RspVtx* b) {
+    float da = a->z + a->w, db = b->z + b->w, t = da / (da - db);
+    RspVtx r;
+
+    r.x = a->x + (b->x - a->x) * t;
+    r.y = a->y + (b->y - a->y) * t;
+    r.z = a->z + (b->z - a->z) * t;
+    r.w = a->w + (b->w - a->w) * t;
+    r.r = a->r + (b->r - a->r) * t;
+    r.g = a->g + (b->g - a->g) * t;
+    r.b = a->b + (b->b - a->b) * t;
+    r.a = a->a + (b->a - a->a) * t;
+    r.u = a->u + (b->u - a->u) * t;
+    r.v = a->v + (b->v - a->v) * t;
+    r.clip = 0;
+    return r;
+}
+
 static void tri(int i0, int i1, int i2) {
     const RspVtx* v[3] = { &rsp.vtx[i0 % MAX_VERTS], &rsp.vtx[i1 % MAX_VERTS], &rsp.vtx[i2 % MAX_VERTS] };
-    int k;
+    int k, near;
 
     sStats.tris++;
     if (!drawing_enabled()) {
@@ -1801,19 +1867,43 @@ static void tri(int i0, int i1, int i2) {
             return;
         }
     }
-    begin_batch(0);
-    for (k = 0; k < 3; k++) {
-        float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
-        float col[4] = { v[k]->r, v[k]->g, v[k]->b, v[k]->a };
-
-        if (rsp.texOn) {
-            tile_uv_fast(rsp.texTile, v[k]->u, v[k]->v, &u0, &v0);
-            tile_uv_fast(rsp.texTile + 1, v[k]->u, v[k]->v, &u1, &v1);
+    near = (v[0]->clip & v[1]->clip & v[2]->clip & CLIP_NEAR) != 0;
+    if (near || !((v[0]->clip | v[1]->clip | v[2]->clip) & CLIP_NEAR) || v[0]->w <= 0.0f || v[1]->w <= 0.0f ||
+        v[2]->w <= 0.0f) {
+        // Wholly in front of the near plane: in the near slice (see
+        // depth_z); wholly behind it: as is. (Crossing it with a vertex
+        // behind the eye: as is, GL clips.)
+        begin_batch(0);
+        for (k = 0; k < 3; k++) {
+            emit_vertex(v[k], near);
         }
-        // Wholly in front of the near plane: drawn at the nearest depth (NoN);
-        // crossing it: real depths, GL clips the near part
-        push_vertex(v[k]->x, v[k]->y, (v[0]->clip & v[1]->clip & v[2]->clip & CLIP_NEAR) ? -v[k]->w : v[k]->z,
-                    v[k]->w, col, u0, v0, u1, v1, (rsp.geom & G_FOG) ? v[k]->a : 0.0f);
+        return;
+    }
+    {
+        // Crossing the near plane (a first-person item, a ground triangle at
+        // the camera): split there. The far part keeps its depth, the near
+        // part goes in the near slice, in front of everything else.
+        RspVtx farP[4], nearP[4];
+        int nf = 0, nn = 0;
+
+        for (k = 0; k < 3; k++) {
+            const RspVtx* a = v[k];
+            const RspVtx* b = v[(k + 1) % 3];
+            int aNear = (a->clip & CLIP_NEAR) != 0, bNear = (b->clip & CLIP_NEAR) != 0;
+
+            if (aNear) {
+                nearP[nn++] = *a;
+            } else {
+                farP[nf++] = *a;
+            }
+            if (aNear != bNear) {
+                RspVtx m = near_point(a, b);
+                farP[nf++] = m;
+                nearP[nn++] = m;
+            }
+        }
+        emit_polygon(farP, nf, 0);
+        emit_polygon(nearP, nn, 1);
     }
 }
 
@@ -2564,7 +2654,7 @@ int S30Gfx_DepthVisible(float x, float y, float z) {
         return 0;
     }
     // Centre of the N64 pixel; GL rows run bottom-up
-    S30Display_QueueProbe(i, (int)((x + WIDE_PAD + 0.5f) * FB_SCALE), (int)((SCREEN_H - y - 0.5f) * FB_SCALE), z);
+    S30Display_QueueProbe(i, (int)((x + WIDE_PAD + 0.5f) * FB_SCALE), (int)((SCREEN_H - y - 0.5f) * FB_SCALE), depth_ndc(z));
     return i < sNumDepthResults ? sDepthResults[i] : 1;
 }
 
