@@ -6,6 +6,9 @@
  *   OOT_SAVE     save file (default: $XDG_DATA_HOME/oot/oot.sav, i.e.
  *                ~/.local/share/oot/oot.sav; else oot.sav next to the binary)
  *   OOT_NOAUDIO  set to run without sound
+ *
+ * Crash reports also go to crash.log next to the binary (on the SD card;
+ * stderr is the launcher's log in /tmp, lost on reboot).
  */
 #include <libgen.h>
 #include <signal.h>
@@ -23,6 +26,7 @@
 #include "s30_platform.h"
 
 #include <errno.h> // after the game headers: controller.h has an errno field
+#include <fcntl.h>
 
 const char* gS30DataDir;
 const char* gS30SaveFile;
@@ -77,8 +81,20 @@ static const char* path_beside(const char* exeDir, const char* name) {
     return p;
 }
 
-/* Crash report on stderr (the launcher logs it): fault address, registers and
-   the code addresses found on the stack, for addr2line against the binary */
+static const char* sCrashLog; // crash.log next to the binary
+static int sCrashFd = -1;
+
+/* To stderr and the crash log (async-signal-safe calls only) */
+static void crash_write(const char* s) {
+    write(2, s, strlen(s));
+    if (sCrashFd >= 0) {
+        write(sCrashFd, s, strlen(s));
+    }
+}
+
+/* Crash report on stderr (the launcher logs it, in RAM) and appended to the
+   crash log: fault address, registers and the code addresses found on the
+   stack, for addr2line against the binary */
 static void on_crash(int sig, siginfo_t* info, void* ctx) {
     extern char __executable_start[], etext[];
     const mcontext_t* mc = &((const ucontext_t*)ctx)->uc_mcontext;
@@ -86,17 +102,23 @@ static void on_crash(int sig, siginfo_t* info, void* ctx) {
     char buf[160];
     int i, n = 0;
 
+    sCrashFd = open(sCrashLog, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+
     snprintf(buf, sizeof(buf), "crash: signal %d at %p pc %08lx lr %08lx sp %08lx\ncrash: stack", sig,
              info->si_addr, mc->arm_pc, mc->arm_lr, mc->arm_sp);
-    write(2, buf, strlen(buf));
+    crash_write(buf);
     for (i = 0; i < 512 && n < 24; i++) {
         if (sp[i] >= (uintptr_t)__executable_start && sp[i] < (uintptr_t)etext) {
             snprintf(buf, sizeof(buf), " %08lx", (unsigned long)sp[i]);
-            write(2, buf, strlen(buf));
+            crash_write(buf);
             n++;
         }
     }
-    write(2, "\n", 1);
+    crash_write("\n");
+    if (sCrashFd >= 0) {
+        fsync(sCrashFd); // the device may be powered off next
+        close(sCrashFd);
+    }
     signal(sig, SIG_DFL);
     raise(sig);
 }
@@ -107,6 +129,7 @@ int main(int argc, char** argv) {
     const char* home = getenv("HOME");
 
     setvbuf(stdout, NULL, _IOLBF, 0); // logs survive a crash
+    sCrashLog = path_beside(exeDir, "crash.log");
     {
         struct sigaction sa;
 
