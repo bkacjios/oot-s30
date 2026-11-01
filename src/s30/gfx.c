@@ -18,6 +18,8 @@
  *   stores premultiplied alpha and is composited in draw order.
  */
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+#include <EGL/egl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,8 +87,9 @@ typedef struct {
     float x, y, z, w;
     float r, g, b, a;
     float u, v; // texture coords, 10.5 texels (after the G_TEXTURE scale)
-    u8 clip;
+    u8 clip; // outside x/y planes (bits 0-3); CLIP_NEAR: in front of the near plane
 } RspVtx;
+#define CLIP_NEAR 0x10
 
 typedef struct {
     float col[3];
@@ -154,6 +157,46 @@ static void aux_sync(const u8* src, u32 bytes);
 static u8 sTmem[4096];
 static u16 sTlut[256];
 static u32 sTmemGen = 1;
+/* Combiner bits of the first cycle (a0 c0 Aa0 Ac0 | b0 d0 Ab0 Ad0) */
+#define COMB1_W0 0x00FFFE00u
+#define COMB1_W1 0xF003FE00u
+
+static int sBatchTile; // render tile of the pending batch (texture coordinates, binding)
+/* Why batches end (OOT_GFXSTATS): the draw count is what costs on lima */
+enum {
+    FR_AUXSYNC,
+    FR_BG,
+    FR_BLENDCOL,
+    FR_CIMG,
+    FR_COMBINE,
+    FR_FILLCOL,
+    FR_FOGCOL,
+    FR_FRAME,
+    FR_GEOM,
+    FR_LOADBLOCK,
+    FR_LOADTILE,
+    FR_MARK,
+    FR_OMODEH,
+    FR_OMODEL,
+    FR_PRIMLOD,
+    FR_RDPOMODE,
+    FR_SCISSOR,
+    FR_TEXTURE,
+    FR_TILE,
+    FR_TLUT,
+    FR_VIEWPORT,
+    FR_ZCLEAR,
+    FR_ZIMG,
+    FR_BATCH_SPACE,
+    FR_BATCH_TILE,
+    FR_BATCH_FULL,
+    FR_COUNT
+};
+static const char* const kFlushNames[FR_COUNT] = {"auxsync", "bg", "blendcol", "cimg", "combine", "fillcol", "fogcol", "frame", "geom", "loadblock", "loadtile", "mark", "omodeH", "omodeL", "primlod", "rdpomode", "scissor", "texture", "tile", "tlut", "viewport", "zclear", "zimg", "batch-space", "batch-tile", "batch-full"};
+static u32 sFlushWhy[FR_COUNT];
+static int sFlushReason = -1;
+static void flush(void);
+#define flush_for(r) (sFlushReason = (r), flush(), sFlushReason = -1)
 
 /* ---------------------------------------------------------------------------
  * Math
@@ -202,6 +245,85 @@ static void update_lights(void) {
     rsp.lightsDirty = 0;
 }
 
+/* OOT_PROFILE: a sampling profiler. SIGPROF every 1 ms of process CPU time
+   records the interrupted pc; every 500 frames the counts and the memory map
+   go to /tmp/oot_prof.txt (symbolize the binary's with addr2line, libraries
+   by their map). */
+#include <sys/time.h>
+#include <ucontext.h>
+
+#define PROF_MAX (1 << 20)
+static u32* sProfPc;
+static volatile u32 sProfN;
+
+static void prof_sample(int sig, siginfo_t* info, void* ctx) {
+    u32 n = sProfN;
+
+    (void)sig;
+    (void)info;
+    if (n < PROF_MAX) {
+        sProfPc[n] = (u32)((ucontext_t*)ctx)->uc_mcontext.arm_pc;
+        sProfN = n + 1;
+    }
+}
+
+static int prof_cmp(const void* a, const void* b) {
+    u32 x = *(const u32*)a, y = *(const u32*)b;
+    return x < y ? -1 : x > y;
+}
+
+static void prof_tick(u32 frame) {
+    static int on = -1;
+    FILE *f, *maps;
+    u32 n, i, run;
+    u32* copy;
+    char line[512];
+
+    if (on < 0) {
+        struct sigaction sa;
+        struct itimerval it = { { 0, 1000 }, { 0, 1000 } };
+
+        on = getenv("OOT_PROFILE") != NULL;
+        if (!on) {
+            return;
+        }
+        sProfPc = malloc(PROF_MAX * sizeof(u32));
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_sigaction = prof_sample;
+        sa.sa_flags = SA_SIGINFO | SA_RESTART;
+        sigaction(SIGPROF, &sa, NULL);
+        setitimer(ITIMER_PROF, &it, NULL);
+        printf("gfx: profiling to /tmp/oot_prof.txt\n");
+    }
+    if (!on || frame % 500 != 0 || (n = sProfN) == 0) {
+        return;
+    }
+    copy = malloc(n * sizeof(u32));
+    memcpy(copy, sProfPc, n * sizeof(u32));
+    qsort(copy, n, sizeof(u32), prof_cmp);
+    f = fopen("/tmp/oot_prof.txt.tmp", "w");
+    if (f != NULL) {
+        fprintf(f, "samples %u frames %u\n", n, frame);
+        maps = fopen("/proc/self/maps", "r");
+        while (maps != NULL && fgets(line, sizeof(line), maps) != NULL) {
+            if (strstr(line, " r-xp ") != NULL) {
+                fprintf(f, "map %s", line);
+            }
+        }
+        if (maps != NULL) {
+            fclose(maps);
+        }
+        for (i = 0; i < n; i += run) {
+            for (run = 1; i + run < n && copy[i + run] == copy[i]; run++) {
+            }
+            fprintf(f, "%08x %u\n", (unsigned)copy[i], (unsigned)run);
+        }
+        fclose(f);
+        rename("/tmp/oot_prof.txt.tmp", "/tmp/oot_prof.txt");
+    }
+    free(copy);
+}
+
 static double now_ms(void) {
     struct timespec ts;
 
@@ -209,6 +331,11 @@ static double now_ms(void) {
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
 }
 static double sTFlush, sTTex, sTDraw; // profiling (OOT_GFXSTATS)
+/* Per-draw timers: clock_gettime is a system call here (no vDSO clock), so
+   only while stats are on */
+static inline double stat_ms(void) {
+    return sStatsOn > 1 ? now_ms() : 0.0; // OOT_GFXSTATS=2
+}
 
 /* ---------------------------------------------------------------------------
  * GL state cache: lima is expensive per call, so only send changes. Anything
@@ -585,18 +712,25 @@ static TileCache sTileCache[8];
 
 static u8 sDecodeBuf[512 * 512 * 4];
 
+/* Content hash for the texture cache: two 32-bit FNV-1a lanes over
+   alternating words (a 64-bit multiply per word is several instructions on
+   32-bit ARM; this hashing was ~1.5% of the frame) */
 static u64 hash_bytes(const u8* p, size_t n, u64 h) {
+    u32 a = (u32)h, b = (u32)(h >> 32);
     size_t i = 0;
 
-    for (; i + 4 <= n; i += 4) {
-        u32 w;
-        memcpy(&w, p + i, 4);
-        h = (h ^ w) * 0x100000001B3ull;
+    for (; i + 8 <= n; i += 8) {
+        u32 w0, w1;
+        memcpy(&w0, p + i, 4);
+        memcpy(&w1, p + i + 4, 4);
+        a = (a ^ w0) * 0x01000193u;
+        b = (b ^ w1) * 0x01000193u;
     }
     for (; i < n; i++) {
-        h = (h ^ p[i]) * 0x100000001B3ull;
+        a = (a ^ p[i]) * 0x01000193u;
+        b = (b + p[i]) * 0x01000193u;
     }
-    return h;
+    return ((u64)b << 32 | a) ^ ((u64)a << 17);
 }
 
 static inline void put_rgba(u8* d, u8 r, u8 g, u8 b, u8 a) {
@@ -745,7 +879,7 @@ static TexEntry* tex_lookup(int tileIdx, int* outW, int* outH) {
         return tc->entry;
     }
 
-    double tt = now_ms();
+    double tt = stat_ms();
     // Content hash of the TMEM bytes the tile covers (+ palette for CI)
     bytes = pitch * h;
     if (t->tmem * 8 + bytes > 4096) {
@@ -805,9 +939,9 @@ static TexEntry* tex_lookup(int tileIdx, int* outW, int* outH) {
                          tile_texel(y, t->maskt, t->cmt), tlutMode);
         }
     }
-    glActiveTexture(GL_TEXTURE0 + (tileIdx == rsp.texTile ? 0 : 1));
+    glActiveTexture(GL_TEXTURE0 + (tileIdx == sBatchTile ? 0 : 1));
     glBindTexture(GL_TEXTURE_2D, e->tex);
-    sGL.tex[tileIdx == rsp.texTile ? 0 : 1] = e->tex;
+    sGL.tex[tileIdx == sBatchTile ? 0 : 1] = e->tex;
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, sDecodeBuf);
     if (sTraceFrame != 0 && sFrame <= sTraceFrame && t->siz == G_IM_SIZ_32b && w == 160) {
         static int n;
@@ -821,7 +955,7 @@ static TexEntry* tex_lookup(int tileIdx, int* outW, int* outH) {
         }
     }
 found:
-    sTTex += now_ms() - tt;
+    sTTex += stat_ms() - tt;
     e->lastUse = sFrame;
     tc->gen = sTmemGen;
     tc->tile = *t;
@@ -884,8 +1018,8 @@ static struct {
 
 static void set_tile(int ti, const Tile* n) {
     if (memcmp(&rdp.tiles[ti], n, sizeof(Tile)) != 0) {
-        if (ti == (rsp.texTile & 7) || ti == ((rsp.texTile + 1) & 7)) {
-            flush();
+        if (ti == (sBatchTile & 7) || ti == ((sBatchTile + 1) & 7)) {
+            flush_for(FR_TILE);
         }
         rdp.tiles[ti] = *n;
         sTileUv[ti].valid = 0;
@@ -937,23 +1071,44 @@ static void tile_uv(int tileIdx, float s, float t, float* u, float* v) {
    which keeps the texture cache key (sTmemGen) stable for repeated draws */
 typedef struct {
     const void* src;
-    u32 bytes, pitch, kind;
+    u32 bytes, pitch, kind, gen;
 } LoadKey;
 static LoadKey sLastLoad[512];
+static u32 sLoadGen = 1; // memos count only from the current generation: a
+                         // bump forgets them all (was a memset of the table)
 
 static int same_load(u32 tmem, const void* src, u32 bytes, u32 pitch, u32 kind) {
     LoadKey* k = &sLastLoad[tmem & 511];
 
-    if (k->src == src && k->bytes == bytes && k->pitch == pitch && k->kind == kind) {
+    if (k->gen == sLoadGen && k->src == src && k->bytes == bytes && k->pitch == pitch && k->kind == kind) {
         return 1;
     }
     // A different load here also invalidates any memo it overlaps
-    memset(sLastLoad, 0, sizeof(sLastLoad));
+    sLoadGen++;
     k->src = src;
     k->bytes = bytes;
     k->pitch = pitch;
     k->kind = kind;
+    k->gen = sLoadGen;
     return 0;
+}
+
+/* TMEM copy from the game's u64-word data (byte i is at i ^ 7): aligned
+   eight-byte groups in one byte swap */
+static void copy_swapped(u8* dst, const u8* src, u32 n) {
+    u32 i = 0;
+
+    if (((uintptr_t)src & 7) == 0) {
+        for (; i + 8 <= n; i += 8) {
+            u64 w;
+            memcpy(&w, src + i, 8);
+            w = __builtin_bswap64(w);
+            memcpy(dst + i, &w, 8);
+        }
+    }
+    for (; i < n; i++) {
+        dst[i] = rd8(src + i);
+    }
 }
 
 static void load_block(int tileIdx, u32 uls, u32 lrs, u32 dxt) {
@@ -962,7 +1117,6 @@ static void load_block(int tileIdx, u32 uls, u32 lrs, u32 dxt) {
     u32 texels = lrs - uls + 1;
     u32 bytes = rdp.timgSiz == G_IM_SIZ_4b ? (texels + 1) / 2 : texels << (rdp.timgSiz - 1);
     u32 dst = t->tmem * 8;
-    u32 i;
 
     (void)dxt;
     if (src == NULL) {
@@ -980,10 +1134,8 @@ static void load_block(int tileIdx, u32 uls, u32 lrs, u32 dxt) {
     if (same_load(t->tmem, src, bytes, 0, 1)) {
         return;
     }
-    flush();
-    for (i = 0; i < bytes; i++) {
-        sTmem[dst + i] = rd8(src + i);
-    }
+    flush_for(FR_LOADBLOCK);
+    copy_swapped(&sTmem[dst], src, bytes);
     sTmemGen++;
 }
 
@@ -995,7 +1147,7 @@ static void load_tile(int tileIdx, u32 uls, u32 ult, u32 lrs, u32 lrt) {
     u32 rowBytes = ((x1 - x0 + 1) * bpt2 + 1) / 2;
     u32 srcPitch = (rdp.timgWidth * bpt2 + 1) / 2;
     u32 pitch = tile_pitch(t);
-    u32 y, i;
+    u32 y;
 
     if (src == NULL) {
         return;
@@ -1004,12 +1156,12 @@ static void load_tile(int tileIdx, u32 uls, u32 ult, u32 lrs, u32 lrt) {
     if (same_load(t->tmem, src + y0 * srcPitch + (x0 * bpt2) / 2, rowBytes * (y1 - y0 + 1), pitch, 2)) {
         return;
     }
-    flush();
+    flush_for(FR_LOADTILE);
     for (y = y0; y <= y1; y++) {
         const u8* s = src + y * srcPitch + (x0 * bpt2) / 2;
         u32 d = t->tmem * 8 + (y - y0) * pitch;
-        for (i = 0; i < rowBytes && d + i < 4096; i++) {
-            sTmem[d + i] = rd8(s + i);
+        if (d < 4096) {
+            copy_swapped(&sTmem[d], s, d + rowBytes > 4096 ? 4096 - d : rowBytes);
         }
     }
     sTmemGen++;
@@ -1031,7 +1183,7 @@ static void load_tlut(int tileIdx, u32 count) {
         u16 c = (rd8(src + i * 2) << 8) | rd8(src + i * 2 + 1);
         if (sTlut[first + i] != c) {
             if (!changed) {
-                flush();
+                flush_for(FR_TLUT);
                 changed = 1;
             }
             sTlut[first + i] = c;
@@ -1050,6 +1202,23 @@ static void load_tlut(int tileIdx, u32 count) {
 #define MAX_BATCH 3072
 static float sBatch[MAX_BATCH * VSTRIDE];
 static int sBatchVerts;
+
+/* Batches go to the GPU through one streaming vertex buffer, written with
+   unsynchronized maps: client-side arrays cost lima ~40% more per draw (a
+   new upload buffer each time), and glBufferSubData on a buffer the pending
+   job reads flushes the job. Frames rotate through VBO_RING buffers, so a
+   buffer is rewritten only after the frame that last used it is on screen
+   (EndFrame waits for the previous flip); orphaning one per frame instead
+   had the kernel allocate and zero 4 MiB a frame. A frame that fills its
+   buffer orphans it (rare). */
+#define VBO_VERTS (24 * 1024) // 2 MiB; Clock Town is ~13-15k vertices a frame
+#define VBO_RING 3
+static GLuint sVboRing[VBO_RING], sVbo;
+static int sVboFrame;
+static int sVboNext = VBO_VERTS; // next free vertex; VBO_VERTS: orphan first
+static PFNGLMAPBUFFERRANGEEXTPROC sMapRange;
+static PFNGLUNMAPBUFFEROESPROC sUnmap;
+static int sVboOn = -1;
 static int sBatchScreen; // batch is screen-space (rects): full-screen viewport
 
 /* ---------------------------------------------------------------------------
@@ -1138,7 +1307,7 @@ static void aux_sync(const u8* src, u32 bytes) {
         if (!a->dirty || src + bytes <= a->ram || src >= a->ram + a->width * a->rows * 2) {
             continue;
         }
-        flush();
+        flush_for(FR_AUXSYNC);
         aux_bind(a);
         glReadPixels(0, AUX_H - a->rows, a->width, a->rows, GL_RGBA, GL_UNSIGNED_BYTE, px);
         // GL rows run bottom-up
@@ -1152,7 +1321,7 @@ static void aux_sync(const u8* src, u32 bytes) {
             }
         }
         a->dirty = 0;
-        memset(sLastLoad, 0, sizeof(sLastLoad));
+        sLoadGen++;
     }
 }
 
@@ -1205,7 +1374,12 @@ static void apply_state(void) {
         flags = (flags & ~(SF_ALPHA_THRESH | SF_TEX_EDGE)) | SF_DBG_ALPHA;
         blend = 0;
     }
-    sh = get_shader(rdp.combW0, rdp.combW1, flags);
+    if (cyc == G_CYC_1CYCLE) {
+        // Second-cycle terms unused: one program for all of them
+        sh = get_shader(rdp.combW0 & COMB1_W0, rdp.combW1 & COMB1_W1, flags);
+    } else {
+        sh = get_shader(rdp.combW0, rdp.combW1, flags);
+    }
     if (sGL.prog != sh->prog) {
         glUseProgram(sh->prog);
         sGL.prog = sh->prog;
@@ -1237,7 +1411,7 @@ static void apply_state(void) {
                 sGL.tex[0] = sBgTex;
             }
         } else if (sh->usesTex[i]) {
-            bind_tile(i, rsp.texTile + i, size);
+            bind_tile(i, sBatchTile + i, size);
             if ((flags & SF_3POINT) && memcmp(sh->curSize[i], size, sizeof(size)) != 0) {
                 glUniform2fv(i ? sh->uTexSize1 : sh->uTexSize0, 1, size);
                 memcpy(sh->curSize[i], size, sizeof(size));
@@ -1296,16 +1470,7 @@ static void apply_state(void) {
     gl_enable(GL_POLYGON_OFFSET_FILL, (l & ZMODE_DEC) == ZMODE_DEC, &sGL.polyOfs);
 
     // Culling: N64 front faces are counter-clockwise in GL's y-up NDC
-    gl_enable(GL_CULL_FACE, !sBatchScreen && (rsp.geom & G_CULL_BOTH), &sGL.cull);
-    if (sGL.cull) {
-        GLenum face = (rsp.geom & G_CULL_BOTH) == G_CULL_BOTH ? GL_FRONT_AND_BACK
-                      : (rsp.geom & G_CULL_FRONT)             ? GL_FRONT
-                                                              : GL_BACK;
-        if (sGL.cullFace != face) {
-            glCullFace(face);
-            sGL.cullFace = face;
-        }
-    }
+    gl_enable(GL_CULL_FACE, 0, &sGL.cull); // culled per triangle in tri()
 
     // Viewport and scissor. Auxiliary images are 1:1 with N64 pixels; the 2D
     // layer is 1:1 with WIDE_PAD margins; the frame is FB_SCALE with the same
@@ -1345,7 +1510,10 @@ static void flush(void) {
     if (sBatchVerts == 0) {
         return;
     }
-    tf = now_ms();
+    if (sFlushReason >= 0) {
+        sFlushWhy[sFlushReason]++;
+    }
+    tf = stat_ms();
     if (sBatchAux != NULL) {
         aux_bind(sBatchAux);
         if (rdp.scY + rdp.scH > (int)sBatchAux->rows) {
@@ -1359,9 +1527,29 @@ static void flush(void) {
         sStats.switches++;
     }
     apply_state();
+    if (sVboOn < 0) {
+        const char* ext = (const char*)glGetString(GL_EXTENSIONS);
+
+        sMapRange = (PFNGLMAPBUFFERRANGEEXTPROC)eglGetProcAddress("glMapBufferRangeEXT");
+        sUnmap = (PFNGLUNMAPBUFFEROESPROC)eglGetProcAddress("glUnmapBufferOES");
+        sVboOn = ext != NULL && strstr(ext, "GL_EXT_map_buffer_range") != NULL && sMapRange != NULL &&
+                 sUnmap != NULL && getenv("OOT_NOVBO") == NULL;
+        if (sVboOn) {
+            int r;
+            glGenBuffers(VBO_RING, sVboRing);
+            for (r = 0; r < VBO_RING; r++) {
+                glBindBuffer(GL_ARRAY_BUFFER, sVboRing[r]);
+                glBufferData(GL_ARRAY_BUFFER, VBO_VERTS * VSTRIDE * 4, NULL, GL_STREAM_DRAW);
+            }
+            sVbo = sVboRing[0];
+            sVboNext = 0;
+            sAttribsSet = 0;
+        }
+        printf("gfx: vertices %s\n", sVboOn ? "through a streaming buffer" : "as client arrays");
+    }
     if (!sAttribsSet) {
-        // The batch array never moves; the 2D composite and the display blit
-        // reuse attribute slots, so this reruns after them
+        // The 2D composite and the display blit reuse attribute slots (and
+        // bind no buffer), so this reruns after them
         static const struct {
             int idx, n, ofs;
         } attrs[] = {
@@ -1369,19 +1557,37 @@ static void flush(void) {
             { ATTR_FOG, 1, 12 }, { ATTR_PRIM, 4, 13 }, { ATTR_ENV, 4, 17 },
         };
         int a;
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, sVboOn ? sVbo : 0);
         for (a = 0; a < 7; a++) {
             glEnableVertexAttribArray(attrs[a].idx);
-            glVertexAttribPointer(attrs[a].idx, attrs[a].n, GL_FLOAT, GL_FALSE, VSTRIDE * 4, sBatch + attrs[a].ofs);
+            glVertexAttribPointer(attrs[a].idx, attrs[a].n, GL_FLOAT, GL_FALSE, VSTRIDE * 4,
+                                  sVboOn ? (const void*)(uintptr_t)(attrs[a].ofs * 4) : (const void*)(sBatch + attrs[a].ofs));
         }
         sAttribsSet = 1;
     }
     {
-        double td = now_ms();
-        glDrawArrays(GL_TRIANGLES, 0, sBatchVerts);
-        sTDraw += now_ms() - td;
+        double td = stat_ms();
+        if (sVboOn) {
+            void* dst;
+
+            if (sVboNext + sBatchVerts > VBO_VERTS) {
+                glBufferData(GL_ARRAY_BUFFER, VBO_VERTS * VSTRIDE * 4, NULL, GL_STREAM_DRAW);
+                sVboNext = 0;
+            }
+            dst = sMapRange(GL_ARRAY_BUFFER, sVboNext * VSTRIDE * 4, sBatchVerts * VSTRIDE * 4,
+                            GL_MAP_WRITE_BIT_EXT | GL_MAP_UNSYNCHRONIZED_BIT_EXT | GL_MAP_INVALIDATE_RANGE_BIT_EXT);
+            if (dst != NULL) {
+                memcpy(dst, sBatch, sBatchVerts * VSTRIDE * 4);
+                sUnmap(GL_ARRAY_BUFFER);
+                glDrawArrays(GL_TRIANGLES, sVboNext, sBatchVerts);
+            }
+            sVboNext += sBatchVerts;
+        } else {
+            glDrawArrays(GL_TRIANGLES, 0, sBatchVerts);
+        }
+        sTDraw += stat_ms() - td;
     }
-    sTFlush += now_ms() - tf;
+    sTFlush += stat_ms() - tf;
     sStats.draws++;
     {
         // OOT_TRACECOMB=<combiner w0 hex>: log draws using that combiner
@@ -1439,12 +1645,21 @@ static int drawing_enabled(void) {
     return rdp.cimg != rdp.zimg && (rdp.cimgIsFrame || sAuxCur != NULL);
 }
 
-static void begin_batch(int screen) {
-    if (sBatchScreen != screen || sBatchAux != sAuxCur || sBatchVerts + 6 > MAX_BATCH) {
-        flush();
+/* Vertices about to be added: a batch is one draw, so it needs one target,
+   one space (screen or 3D) and one render tile */
+static void begin_batch_tile(int screen, int tile) {
+    if (sBatchScreen != screen || sBatchAux != sAuxCur || sBatchTile != tile || sBatchVerts + 6 > MAX_BATCH) {
+        flush_for(sBatchVerts + 6 > MAX_BATCH ? FR_BATCH_FULL
+                  : sBatchTile != tile         ? FR_BATCH_TILE
+                                               : FR_BATCH_SPACE);
     }
     sBatchScreen = screen;
     sBatchAux = sAuxCur;
+    sBatchTile = tile;
+}
+
+static void begin_batch(int screen) {
+    begin_batch_tile(screen, rsp.texTile);
 }
 
 static void push_vertex(float x, float y, float z, float w, const float col[4], float u0, float v0, float u1,
@@ -1549,9 +1764,12 @@ static void handle_vtx(u32 w0, u32 w1) {
             d->a = f / 255.0f;
         }
         // F3DEX2 NoN: no near-plane clipping (first-person items between the
-        // eye and the near plane still draw), at the nearest depth
+        // eye and the near plane still draw), the RDP clamping each pixel's
+        // depth. Clamped per triangle in tri(): clamping this vertex alone
+        // would pull the depth of a whole large triangle (ground crossing the
+        // near plane) forward over everything
         if (d->w > 0.0f && d->z < -d->w) {
-            d->z = -d->w;
+            d->clip |= CLIP_NEAR;
         }
     }
 }
@@ -1565,9 +1783,23 @@ static void tri(int i0, int i1, int i2) {
         sStats.trisSkipped++;
         return;
     }
-    if (v[0]->clip & v[1]->clip & v[2]->clip) {
+    if (v[0]->clip & v[1]->clip & v[2]->clip & ~CLIP_NEAR) {
         sStats.trisClipped++;
         return; // all outside the same plane
+    }
+    if (rsp.geom & G_CULL_BOTH) {
+        // Face culling here rather than in GL, so cull mode changes don't end
+        // the batch. The sign of det(x, y, w) is the facing in window space
+        // (counter-clockwise front in GL's y-up NDC), also for triangles
+        // crossing w = 0 (Olano & Greer)
+        float det = v[0]->x * (v[1]->y * v[2]->w - v[2]->y * v[1]->w) -
+                    v[0]->y * (v[1]->x * v[2]->w - v[2]->x * v[1]->w) +
+                    v[0]->w * (v[1]->x * v[2]->y - v[2]->x * v[1]->y);
+
+        if (((rsp.geom & G_CULL_BACK) && det <= 0.0f) || ((rsp.geom & G_CULL_FRONT) && det >= 0.0f)) {
+            sStats.trisClipped++;
+            return;
+        }
     }
     begin_batch(0);
     for (k = 0; k < 3; k++) {
@@ -1578,7 +1810,10 @@ static void tri(int i0, int i1, int i2) {
             tile_uv_fast(rsp.texTile, v[k]->u, v[k]->v, &u0, &v0);
             tile_uv_fast(rsp.texTile + 1, v[k]->u, v[k]->v, &u1, &v1);
         }
-        push_vertex(v[k]->x, v[k]->y, v[k]->z, v[k]->w, col, u0, v0, u1, v1, (rsp.geom & G_FOG) ? v[k]->a : 0.0f);
+        // Wholly in front of the near plane: drawn at the nearest depth (NoN);
+        // crossing it: real depths, GL clips the near part
+        push_vertex(v[k]->x, v[k]->y, (v[0]->clip & v[1]->clip & v[2]->clip & CLIP_NEAR) ? -v[k]->w : v[k]->z,
+                    v[k]->w, col, u0, v0, u1, v1, (rsp.geom & G_FOG) ? v[k]->a : 0.0f);
     }
 }
 
@@ -1626,7 +1861,7 @@ static void handle_movemem(u32 w0, u32 w1) {
         float sx = vp->vp.vscale[0] / 4.0f, sy = vp->vp.vscale[1] / 4.0f;
         float tx = vp->vp.vtrans[0] / 4.0f, ty = vp->vp.vtrans[1] / 4.0f;
 
-        flush();
+        flush_for(FR_VIEWPORT);
         rsp.vpX = tx - sx;
         rsp.vpY = ty - sy;
         rsp.vpW = 2.0f * sx;
@@ -1757,7 +1992,7 @@ static void handle_fillrect(u32 w0, u32 w1) {
 
     if (rdp.cimg == rdp.zimg) {
         // Clearing the depth buffer (the game fills the z image)
-        flush();
+        flush_for(FR_ZCLEAR);
         S30Display_Bind3D();
         gl_cache_reset();
         glDisable(GL_SCISSOR_TEST);
@@ -1835,7 +2070,6 @@ static void handle_texrect(u32 w0, u32 w1, u32 h1, u32 h2, int flip) {
     u32 cyc = rdp.otherH & (3 << G_MDSFT_CYCLETYPE);
     float w, h, s1, t1;
     float a0[2], a1[2], b0[2], b1[2];
-    int savedTile = rsp.texTile;
 
     if (!drawing_enabled()) {
         return;
@@ -1851,13 +2085,10 @@ static void handle_texrect(u32 w0, u32 w1, u32 h1, u32 h2, int flip) {
     s1 = s + (flip ? h : w) * dsdx * 32.0f;
     t1 = t + (flip ? w : h) * dtdy * 32.0f;
 
-    // Rects use their own tile; the batch shares texture state, so flush
-    if (tile != rsp.texTile || sBatchScreen == 0) {
-        flush();
-    }
-    rsp.texTile = tile;
+    // Rects name their own tile; consecutive ones with the same tile and state
+    // share a draw (state changes and texture loads flush as for triangles)
     sStats.rects++;
-    begin_batch(1);
+    begin_batch_tile(1, tile);
     tile_uv(tile, s, t, &a0[0], &a0[1]);
     tile_uv(tile, s1, t1, &a1[0], &a1[1]);
     if (sTraceFrame != 0 && sFrame == sTraceFrame) {
@@ -1870,9 +2101,7 @@ static void handle_texrect(u32 w0, u32 w1, u32 h1, u32 h2, int flip) {
     tile_uv(tile + 1, s, t, &b0[0], &b0[1]);
     tile_uv(tile + 1, s1, t1, &b1[0], &b1[1]);
     push_rect(ulx, uly, lrx, lry, a0, a1, b0, b1, flip);
-    flush();
     hud_trace_rect(ulx, uly, tile);
-    rsp.texTile = savedTile;
 }
 
 /* S2DEX G_BG_COPY / G_BG_1CYC: the prerendered room background. The game
@@ -1911,7 +2140,7 @@ static void handle_bg(u32 w1, int copy) {
     for (i = 0; i < 256; i++) {
         hash = (hash ^ px[(u32)i * (w * h / 256)]) * 0x100000001B3ull;
     }
-    flush();
+    flush_for(FR_BG);
     if (tex == 0 || texSrc != px || texHash != hash || texW != w || texH != h) {
         if (tex == 0) {
             glGenTextures(1, &tex);
@@ -1975,7 +2204,7 @@ static void handle_bg(u32 w1, int copy) {
     sHadBg = 1;
     begin_batch(1);
     push_rect(x0, y0, x1, y1, a0, a1, zero, zero, 0);
-    flush();
+    flush_for(FR_BG);
     sBgTex = 0;
 }
 
@@ -2013,7 +2242,7 @@ static void walk(Gfx* dl, int depth) {
 
         sStats.cmds++;
         if (w0 == S30_GFX_MARK) {
-            flush();
+            flush_for(FR_MARK);
             if (w1 == S30_MARK_BG_SAVE) {
                 S30Display_SaveBackground();
             } else if (w1 == S30_MARK_BG_RESTORE) {
@@ -2052,10 +2281,10 @@ static void walk(Gfx* dl, int depth) {
             case G_GEOMETRYMODE: {
                 u32 g = (rsp.geom & w0) | w1;
                 if (g != rsp.geom) {
-                    // Lighting/fog/texgen are applied per vertex at G_VTX; only
-                    // z-buffer and culling are draw state
-                    if ((g ^ rsp.geom) & (G_ZBUFFER | G_CULL_BOTH)) {
-                        flush();
+                    // Lighting/fog/texgen are applied per vertex at G_VTX and
+                    // culling per triangle; only the z-buffer is draw state
+                    if ((g ^ rsp.geom) & G_ZBUFFER) {
+                        flush_for(FR_GEOM);
                     }
                     if ((g ^ rsp.geom) & (G_LIGHTING | G_TEXTURE_GEN)) {
                         rsp.lightsDirty = 1;
@@ -2074,7 +2303,7 @@ static void walk(Gfx* dl, int depth) {
                 int on = (w0 >> 1) & 0x7F;
                 int tile = (w0 >> 8) & 7;
                 if (on != rsp.texOn || tile != rsp.texTile) {
-                    flush();
+                    flush_for(FR_TEXTURE);
                 }
                 rsp.texScaleS = w1 >> 16;
                 rsp.texScaleT = w1 & 0xFFFF;
@@ -2100,8 +2329,8 @@ static void walk(Gfx* dl, int depth) {
                 for (i = v0; i <= v1 && i < MAX_VERTS; i++) {
                     c &= rsp.vtx[i].clip;
                 }
-                if (v1 < MAX_VERTS && c) {
-                    return;
+                if (v1 < MAX_VERTS && (c & ~CLIP_NEAR)) {
+                    return; // all outside the same side plane
                 }
                 break;
             }
@@ -2126,7 +2355,7 @@ static void walk(Gfx* dl, int depth) {
                 u32 width = (w0 & 0xFFF) + 1;
 
                 sStats.cimgs++;
-                flush();
+                flush_for(FR_CIMG);
                 rdp.cimg = w1;
                 rdp.cimgIsFrame = width == SCREEN_W;
                 sAuxCur = NULL;
@@ -2140,7 +2369,7 @@ static void walk(Gfx* dl, int depth) {
                 if (sAuxCur != NULL) {
                     // Rendering to an auxiliary image with its own z-buffer
                     // (cleared by the game just before)
-                    flush();
+                    flush_for(FR_ZIMG);
                     aux_bind(sAuxCur);
                     gl_cache_reset();
                     glDisable(GL_SCISSOR_TEST);
@@ -2154,18 +2383,25 @@ static void walk(Gfx* dl, int depth) {
                 rdp.timgWidth = (w0 & 0xFFF) + 1;
                 rdp.timgAddr = w1;
                 break;
-            case G_SETCOMBINE:
-                if ((w0 & 0xFFFFFF) != rdp.combW0 || w1 != rdp.combW1) {
-                    flush();
-                    rdp.combW0 = w0 & 0xFFFFFF;
-                    rdp.combW1 = w1;
+            case G_SETCOMBINE: {
+                // 1-cycle draws read only the first cycle's terms: a change in
+                // the second alone needs no new draw (a switch to 2-cycle
+                // flushes as a mode change)
+                int one = (rdp.otherH & (3 << G_MDSFT_CYCLETYPE)) == G_CYC_1CYCLE;
+                u32 m0 = one ? COMB1_W0 : 0xFFFFFF, m1 = one ? COMB1_W1 : 0xFFFFFFFF;
+
+                if (((w0 ^ rdp.combW0) & m0) || ((w1 ^ rdp.combW1) & m1)) {
+                    flush_for(FR_COMBINE);
                 }
+                rdp.combW0 = w0 & 0xFFFFFF;
+                rdp.combW1 = w1;
                 break;
+            }
             case G_SETOTHERMODE_H: {
                 u32 m = rdp.otherH;
                 set_othermode(&m, w0, w1);
                 if ((m ^ rdp.otherH) & OTHERH_USED) {
-                    flush();
+                    flush_for(FR_OMODEH);
                 }
                 rdp.otherH = m;
                 break;
@@ -2174,14 +2410,14 @@ static void walk(Gfx* dl, int depth) {
                 u32 m = rdp.otherL;
                 set_othermode(&m, w0, w1);
                 if ((m ^ rdp.otherL) & OTHERL_USED) {
-                    flush();
+                    flush_for(FR_OMODEL);
                 }
                 rdp.otherL = m;
                 break;
             }
             case G_RDPSETOTHERMODE:
                 if (((w0 & 0xFFFFFF) ^ rdp.otherH) & OTHERH_USED || (w1 ^ rdp.otherL) & OTHERL_USED) {
-                    flush();
+                    flush_for(FR_RDPOMODE);
                 }
                 rdp.otherH = w0 & 0xFFFFFF;
                 rdp.otherL = w1;
@@ -2190,7 +2426,7 @@ static void walk(Gfx* dl, int depth) {
                 // per-vertex attribute: no flush needed
                 color_from_word(rdp.prim, w1);
                 if (rdp.primLod != (w0 & 0xFF) / 255.0f) {
-                    flush();
+                    flush_for(FR_PRIMLOD);
                     rdp.primLod = (w0 & 0xFF) / 255.0f;
                 }
                 break;
@@ -2201,7 +2437,7 @@ static void walk(Gfx* dl, int depth) {
                 float c[4];
                 color_from_word(c, w1);
                 if (memcmp(c, rdp.fog, sizeof(c)) != 0) {
-                    flush();
+                    flush_for(FR_FOGCOL);
                     memcpy(rdp.fog, c, sizeof(c));
                 }
                 break;
@@ -2210,7 +2446,7 @@ static void walk(Gfx* dl, int depth) {
                 float c[4];
                 color_from_word(c, w1);
                 if (memcmp(c, rdp.blend, sizeof(c)) != 0) {
-                    flush();
+                    flush_for(FR_BLENDCOL);
                     memcpy(rdp.blend, c, sizeof(c));
                 }
                 break;
@@ -2220,7 +2456,7 @@ static void walk(Gfx* dl, int depth) {
                 u8 r = (c >> 11) & 31, g = (c >> 6) & 31, b = (c >> 1) & 31;
                 float f[4] = { r / 31.0f, g / 31.0f, b / 31.0f, (c & 1) ? 1.0f : 0.0f };
                 if (memcmp(f, rdp.fill, sizeof(f)) != 0) {
-                    flush();
+                    flush_for(FR_FILLCOL);
                     memcpy(rdp.fill, f, sizeof(f));
                 }
                 break;
@@ -2232,7 +2468,7 @@ static void walk(Gfx* dl, int depth) {
                 int x = ((w0 >> 12) & 0xFFF) / 4, y = (w0 & 0xFFF) / 4;
                 int w = ((w1 >> 12) & 0xFFF) / 4 - x, h = (w1 & 0xFFF) / 4 - y;
                 if (x != rdp.scX || y != rdp.scY || w != rdp.scW || h != rdp.scH) {
-                    flush();
+                    flush_for(FR_SCISSOR);
                     rdp.scX = x;
                     rdp.scY = y;
                     rdp.scW = w;
@@ -2301,16 +2537,17 @@ void S30Gfx_Init(void) {
    copies (and content-hashes) it again */
 void gfx_texture_cache_invalidate(void* addr) {
     (void)addr;
-    memset(sLastLoad, 0, sizeof(sLastLoad));
+    sLoadGen++;
 }
 
 void flush_texture_cache_external(void) {
-    memset(sLastLoad, 0, sizeof(sLastLoad));
+    sLoadGen++;
 }
 
-/* Graph callback depth tests, one frame late (as on the N64, which reads the
-   last frame's z-buffer): call i of a frame returns the result of call i of
-   the last frame and queues this one */
+/* Graph callback depth tests, late (the N64 reads the last frame's z-buffer;
+   here two frames back, so the readback doesn't wait on the GPU: see
+   S30Display_ReadProbes): call i of a frame returns the result of call i of
+   an earlier frame and queues this one */
 static unsigned char sDepthResults[32];
 static int sNumDepthResults, sDepthCall;
 
@@ -2364,12 +2601,17 @@ void pc_process_displaylist(Gfx* dl) {
     rdp.scY = 0;
     rdp.scW = SCREEN_W;
     rdp.scH = SCREEN_H;
-    memset(sLastLoad, 0, sizeof(sLastLoad));
+    sLoadGen++;
     rdp.cimg = 0;
     rdp.cimgIsFrame = 1;
     sAuxCur = NULL;
     sCurShader = NULL;
     sBatchVerts = 0;
+    // This frame's buffer in the ring (the attribute pointers follow it:
+    // gl_cache_reset below)
+    sVboFrame = (sVboFrame + 1) % VBO_RING;
+    sVbo = sVboRing[sVboFrame];
+    sVboNext = 0;
     gl_cache_reset();
     glBlendColor(0, 0, 0, 1);
     glPolygonOffset(-1.0f, -2.0f);
@@ -2382,14 +2624,15 @@ void pc_process_displaylist(Gfx* dl) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     walk(dl, 0);
-    flush();
+    flush_for(FR_FRAME);
     t1 = now_ms();
-    if (sStatsOn > 0) {
-        glFinish();
+    if (sStatsOn > 1) {
+        glFinish(); // GPU time measured, at the cost of the CPU/GPU overlap
     }
     t2 = now_ms();
     if (sStatsOn < 0) {
-        sStatsOn = getenv("OOT_GFXSTATS") != NULL;
+        // OOT_GFXSTATS=1: stats every 100 frames; 2: also GPU time (glFinish)
+        sStatsOn = getenv("OOT_GFXSTATS") != NULL ? (atoi(getenv("OOT_GFXSTATS")) > 1 ? 2 : 1) : 0;
         sTraceFrame = getenv("OOT_GFXTRACE") ? atoi(getenv("OOT_GFXTRACE")) : 0;
     }
     if (sStatsOn && sFrame % 100 == 0) {
@@ -2398,11 +2641,26 @@ void pc_process_displaylist(Gfx* dl) {
         printf("time/frame ms: game %.1f walk %.1f (flush %.1f tex %.1f) gpu %.1f present %.1f | worst game+walk+gpu %.1f\n",
                sTGame / 100, sTWalk / 100, sTFlush / 100, sTTex / 100, sTGpu / 100, sTPresent / 100, sTMax);
         sTGame = sTWalk = sTGpu = sTPresent = sTFlush = sTTex = sTMax = 0;
-        printf("gfx[%u]: tris %u (clipped %u) draws %u rects %u fills %u uploads %u 2d->3d %u shaders %d\n",
-               sFrame, sStats.tris, sStats.trisClipped, sStats.draws, sStats.rects, sStats.fills, sStats.uploads,
-               sStats.switches, sNumShaders);
+        {
+            int late, lost;
+            S30Display_TakeLateFrames(&late, &lost);
+            int r;
+            printf("gfx: draws by cause, last 100 frames:");
+            for (r = 0; r < FR_COUNT; r++) {
+                if (sFlushWhy[r] != 0) {
+                    printf(" %s %u", kFlushNames[r], (unsigned)sFlushWhy[r]);
+                }
+            }
+            printf("\n");
+            memset(sFlushWhy, 0, sizeof(sFlushWhy));
+            printf("gfx[%u]: tris %u (clipped %u) draws %u rects %u fills %u uploads %u 2d->3d %u shaders %d "
+                   "| late %d/100 (lost %d vblanks)\n",
+                   sFrame, sStats.tris, sStats.trisClipped, sStats.draws, sStats.rects, sStats.fills, sStats.uploads,
+                   sStats.switches, sNumShaders, late, lost);
+        }
     }
     memset(&sStats, 0, sizeof(sStats));
+    prof_tick(sFrame);
     hud_trace_frame();
     S30Display_EndFrame();
     t3 = now_ms();

@@ -40,7 +40,8 @@ static struct {
     uint32_t crtcId;
     struct gbm_device* gbm;
     struct gbm_surface* surface;
-    struct gbm_bo* curBo;
+    struct gbm_bo* curBo;     // on screen
+    struct gbm_bo* pendingBo; // flip queued, not yet on screen
     EGLDisplay eglDisplay;
     EGLContext eglContext;
     EGLSurface eglSurface;
@@ -412,8 +413,13 @@ static struct {
     int slot;
 } sProbes[MAX_PROBES];
 static int sNumProbes;
-static int sProbeSlots; // result slots drawn by the last frame
-static GLuint sProbeTex, sProbeFbo, sProbeProgram, sGatherProgram;
+/* Results are gathered into one of two 1-row targets, alternating by frame,
+   and read back from the other one: the frame before last, which the GPU
+   has finished (EndFrame waited for its flip), so glReadPixels doesn't stall
+   on the frame still rendering. Results arrive two frames late. */
+static int sProbeSlots[2]; // result slots drawn into each target
+static int sProbeCur;      // target the next draw_probes gathers into
+static GLuint sProbeTex[2], sProbeFbo[2], sProbeProgram, sGatherProgram;
 static GLint sProbePos, sProbeZ, sGatherPos, sGatherUv;
 
 void S30Display_QueueProbe(int slot, int x, int y, float z) {
@@ -431,7 +437,8 @@ static void draw_probes(void) {
     GLfloat pts[MAX_PROBES * 4];
     int i;
 
-    sProbeSlots = 0;
+    sProbeCur ^= 1;
+    sProbeSlots[sProbeCur] = 0;
     if (sNumProbes == 0) {
         return;
     }
@@ -449,14 +456,16 @@ static void draw_probes(void) {
             "void main() { gl_FragColor = texture2D(uTex, vUv); }\n");
         sGatherPos = glGetAttribLocation(sGatherProgram, "aPos");
         sGatherUv = glGetAttribLocation(sGatherProgram, "aUv");
-        glGenTextures(1, &sProbeTex);
-        glBindTexture(GL_TEXTURE_2D, sProbeTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, MAX_PROBES, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glGenFramebuffers(1, &sProbeFbo);
-        glBindFramebuffer(GL_FRAMEBUFFER, sProbeFbo);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sProbeTex, 0);
+        glGenTextures(2, sProbeTex);
+        glGenFramebuffers(2, sProbeFbo);
+        for (i = 0; i < 2; i++) {
+            glBindTexture(GL_TEXTURE_2D, sProbeTex[i]);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, MAX_PROBES, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER, sProbeFbo[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sProbeTex[i], 0);
+        }
     }
 
     // Depth tests in the (already presented) 3D image
@@ -485,7 +494,7 @@ static void draw_probes(void) {
     glDisable(GL_DEPTH_TEST);
 
     // Gather: result of probe i to texel (slot, 0); slots not probed read 0
-    glBindFramebuffer(GL_FRAMEBUFFER, sProbeFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, sProbeFbo[sProbeCur]);
     glViewport(0, 0, MAX_PROBES, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     for (i = 0; i < sNumProbes; i++) {
@@ -493,8 +502,8 @@ static void draw_probes(void) {
         pts[i * 4 + 1] = 0.0f;
         pts[i * 4 + 2] = (sProbes[i].x + 0.5f) / S30_FB_W;
         pts[i * 4 + 3] = (sProbes[i].y + 0.5f) / S30_FB_H;
-        if (sProbes[i].slot + 1 > sProbeSlots) {
-            sProbeSlots = sProbes[i].slot + 1;
+        if (sProbes[i].slot + 1 > sProbeSlots[sProbeCur]) {
+            sProbeSlots[sProbeCur] = sProbes[i].slot + 1;
         }
     }
     glUseProgram(sGatherProgram);
@@ -512,12 +521,13 @@ static void draw_probes(void) {
 
 int S30Display_ReadProbes(unsigned char* out, int max) {
     unsigned char px[MAX_PROBES * 4];
-    int i, n = sProbeSlots < max ? sProbeSlots : max;
+    int prev = sProbeCur ^ 1; // gathered the frame before last
+    int i, n = sProbeSlots[prev] < max ? sProbeSlots[prev] : max;
 
     if (n == 0) {
         return 0;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, sProbeFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, sProbeFbo[prev]);
     sDisp.bound = 0;
     glReadPixels(0, 0, n, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
     for (i = 0; i < n; i++) {
@@ -562,9 +572,28 @@ void S30Display_Bind2D(void) {
     sDisp.dirty2d = 1;
 }
 
+/* Frames shown later than the update rate asks, and the refreshes lost (for
+   the gfx stats) */
+static int sLateFrames, sLostVblanks;
+
+void S30Display_TakeLateFrames(int* frames, int* vblanks) {
+    *frames = sLateFrames;
+    *vblanks = sLostVblanks;
+    sLateFrames = sLostVblanks = 0;
+}
+
 static void page_flip_handler(int fd, unsigned int seq, unsigned int sec, unsigned int usec, void* data) {
+    if (sDisp.lastFlipSeq != 0 && (int)(seq - sDisp.lastFlipSeq) > sVblanksPerFrame) {
+        sLateFrames++;
+        sLostVblanks += (int)(seq - sDisp.lastFlipSeq) - sVblanksPerFrame;
+    }
     sDisp.lastFlipSeq = seq;
-    *(int*)data = 0;
+    (void)data;
+    if (sDisp.pendingBo != NULL) {
+        gbm_surface_release_buffer(sDisp.surface, sDisp.curBo);
+        sDisp.curBo = sDisp.pendingBo;
+        sDisp.pendingBo = NULL;
+    }
 }
 
 static void drm_fb_destroy(struct gbm_bo* bo, void* data) {
@@ -631,6 +660,16 @@ static void maybe_screenshot(void) {
     rename("/tmp/oot_shot.ppm.tmp", "/tmp/oot_shot.ppm");
 }
 
+/* Wait for the queued flip, if any; the buffer it replaced goes back to the
+   surface */
+static void wait_flip(void) {
+    drmEventContext ev = { .version = 2, .page_flip_handler = page_flip_handler };
+
+    while (sDisp.pendingBo != NULL) {
+        drmHandleEvent(sDisp.fd, &ev);
+    }
+}
+
 void S30Display_EndFrame(void) {
     /* Landscape 480x320 view of the portrait panel, filled by the image. In
      * panel (portrait) NDC the landscape x axis runs along the panel's y
@@ -645,8 +684,6 @@ void S30Display_EndFrame(void) {
         1.0f,  w,  1.0f, 0.0f,
     };
     struct gbm_bo* bo;
-    int waiting = 1;
-    drmEventContext ev = { .version = 2, .page_flip_handler = page_flip_handler };
     drmVBlank vbl;
 
     if (sDisp.dirty2d) {
@@ -685,27 +722,28 @@ void S30Display_EndFrame(void) {
         if (drmModeSetCrtc(sDisp.fd, sDisp.crtcId, bo_fb(bo), 0, 0, &sDisp.connectorId, 1, &sDisp.mode) != 0) {
             die("drmModeSetCrtc");
         }
+        sDisp.curBo = bo;
     } else {
-        /* Hold the frame until sVblanksPerFrame refreshes after the last
-           flip (OOT_FAST: run at panel rate, for tests) */
+        /* The flip is queued and not waited for: the next frame's game logic
+           and display list walk run while the GPU renders this one and the
+           kernel flips to it (it waits for the rendering itself). The
+           previous flip has to be done first: one flip at a time. */
         static int fast = -1;
         if (fast < 0) {
             fast = getenv("OOT_FAST") != NULL;
         }
+        wait_flip();
+        /* Hold the frame until sVblanksPerFrame refreshes after the last
+           flip (OOT_FAST: run at panel rate, for tests) */
         if (!fast) {
             memset(&vbl, 0, sizeof(vbl));
             vbl.request.type = DRM_VBLANK_ABSOLUTE;
             vbl.request.sequence = sDisp.lastFlipSeq + sVblanksPerFrame - 1;
             drmWaitVBlank(sDisp.fd, &vbl);
         }
-
-        if (drmModePageFlip(sDisp.fd, sDisp.crtcId, bo_fb(bo), DRM_MODE_PAGE_FLIP_EVENT, &waiting) != 0) {
+        if (drmModePageFlip(sDisp.fd, sDisp.crtcId, bo_fb(bo), DRM_MODE_PAGE_FLIP_EVENT, NULL) != 0) {
             die("drmModePageFlip");
         }
-        while (waiting) {
-            drmHandleEvent(sDisp.fd, &ev);
-        }
-        gbm_surface_release_buffer(sDisp.surface, sDisp.curBo);
+        sDisp.pendingBo = bo;
     }
-    sDisp.curBo = bo;
 }

@@ -39,6 +39,8 @@ int S30Display_ReadProbes(unsigned char* out, int max);
 void S30Display_Unbind(void);
 // Presents the frame (rotated, pillarboxed) and paces to 20 fps
 void S30Display_EndFrame(void);
+// Frames shown late since the last call, and the refreshes they lost
+void S30Display_TakeLateFrames(int* frames, int* vblanks);
 GLuint S30Display_LinkProgram(const char* vs, const char* fs);
 
 #endif
