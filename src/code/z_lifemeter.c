@@ -8,6 +8,7 @@
 #include "play_state.h"
 #include "player.h"
 #include "save.h"
+#include "interface.h"
 
 #include "assets/textures/parameter_static/parameter_static.h"
 
@@ -456,7 +457,7 @@ void Health_DrawMeter(PlayState* play) {
             }
 
             heartCenterY = 26.0f + offsetY;
-            heartCenterX = 30.0f + offsetX;
+            heartCenterX = 30.0f + S30_HUD_LEFT + offsetX;
             heartTexCoordPerPixel = 1.0f;
             heartTexCoordPerPixel /= 0.68f;
             heartTexCoordPerPixel *= 1 << 10;
@@ -487,7 +488,7 @@ void Health_DrawMeter(PlayState* play) {
             {
                 f32 sc = 1.0f - (0.32f * beatingHeartPulsingSize);
                 f32 halfLen = 8.0f * sc;
-                f32 hcX = 30.0f + offsetX;
+                f32 hcX = 30.0f + S30_HUD_LEFT + offsetX;
                 f32 hcY = 26.0f + offsetY;
                 f32 texStep = 1.0f / sc * (1 << 10);
                 gSPTextureRectangle(OVERLAY_DISP++,

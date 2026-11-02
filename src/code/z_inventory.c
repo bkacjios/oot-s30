@@ -309,6 +309,20 @@ u8 Inventory_DeleteEquipment(PlayState* play, s16 equipment) {
             gSaveContext.save.info.infTable[INFTABLE_INDEX_1DX] = 1;
         }
 
+        // S30: off any item button it was put on (shields, tunics and boots can be)
+        if ((equipment == EQUIP_TYPE_SHIELD) || (equipment == EQUIP_TYPE_TUNIC) || (equipment == EQUIP_TYPE_BOOTS)) {
+            static const u8 sFirstItem[] = { ITEM_SWORD_KOKIRI, ITEM_SHIELD_DEKU, ITEM_TUNIC_KOKIRI, ITEM_BOOTS_KOKIRI };
+            u8 item = sFirstItem[equipment] + equipValue - 1;
+            s32 btn;
+
+            for (btn = 1; btn < BUTTON_ITEM_MAX; btn++) {
+                if (BUTTON_ITEM(btn) == item) {
+                    BUTTON_ITEM(btn) = ITEM_NONE;
+                    BUTTON_SLOT(btn) = SLOT_NONE;
+                }
+            }
+        }
+
         Player_SetEquipmentData(play, player);
         play->pauseCtx.cursorSpecialPos = PAUSE_CURSOR_PAGE_LEFT;
     }

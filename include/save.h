@@ -246,9 +246,15 @@ typedef struct SaveInfo {
     /* 0x0058  0x0074 */ Inventory inventory;
     /* 0x00B8  0x00D4 */ SavedSceneFlags sceneFlags[124];
     /* 0x0E48  0x0E64 */ FaroresWindData fw;
-    /* 0x0E70  0x0E8C */ char unk_E8C[0x10];
+    // S30: D-pad item slots (up, down, left, right) in bytes the original game leaves unused, so saves keep
+    // their layout. Per age like the C buttons: the current age's, and the other age's (swapped on age change).
+    /* 0x0E70  0x0E8C */ u8 dpadItems[4];
+    /* 0x0E74  0x0E90 */ u8 dpadSlots[4];
+    /* 0x0E78  0x0E94 */ u8 dpadSet; // DPAD_SET once the D-pad fields are initialised (older saves hold zeroes)
+    /* 0x0E79  0x0E95 */ u8 dpadItemsOtherAge[4];
+    /* 0x0E7D  0x0E99 */ char unk_E99[0x03];
     /* 0x0E80  0x0E9C */ s32 gsFlags[6];
-    /* 0x0E98  0x0EB4 */ char unk_EB4[0x4];
+    /* 0x0E98  0x0EB4 */ u8 dpadSlotsOtherAge[4]; // S30 (unused in the original game)
     /* 0x0E9C  0x0EB8 */ s32 highScores[7];
     /* 0x0EB8  0x0ED4 */ u16 eventChkInf[14]; // "event_chk_inf"
     /* 0x0ED4  0x0EF0 */ u16 itemGetInf[4]; // "item_get_inf"
@@ -280,7 +286,7 @@ typedef struct Save {
 typedef struct SaveContext {
     /* 0x0000 */ Save save; // "memory"
     /* 0x1354 */ s32 fileNum; // "file_no"
-    /* 0x1358 */ char unk_1358[0x0004];
+    /* 0x1358 */ u8 dpadButtonStatus[4]; // S30: as buttonStatus, for the D-pad items (unused in the original game)
     /* 0x135C */ s32 gameMode;
     /* 0x1360 */ s32 sceneLayer; // "counter"
     /* 0x1364 */ s32 respawnFlag; // "restart_flag"
@@ -508,6 +514,21 @@ typedef enum LinkAge {
 #define C_BTN_ITEM(button) ((gSaveContext.buttonStatus[(button) + 1] != BTN_DISABLED) \
                                 ? gSaveContext.save.info.equips.buttonItems[(button) + 1]       \
                                 : ITEM_NONE)
+
+// S30: item buttons as one range: 0 B, 1-3 C-left, C-down, C-right, 4-7 D-up, D-down, D-left, D-right
+#define DPAD_SET 0x5B    // per-age D-pad
+#define DPAD_SET_V1 0x5A // one D-pad for both ages: its items become the current age's
+#define BUTTON_ITEM_MAX 8
+#define BUTTON_ITEM(btn)                                                         \
+    (*((btn) < 4 ? &gSaveContext.save.info.equips.buttonItems[btn] \
+                 : &gSaveContext.save.info.dpadItems[(btn) - 4]))
+#define BUTTON_SLOT(btn)                                                               \
+    (*((btn) < 4 ? &gSaveContext.save.info.equips.cButtonSlots[(btn) - 1] \
+                 : &gSaveContext.save.info.dpadSlots[(btn) - 4]))
+#define BUTTON_STATUS(btn) (*((btn) < 4 ? &gSaveContext.buttonStatus[btn] : &gSaveContext.dpadButtonStatus[(btn) - 4]))
+#define DPAD_SET_STATUS(status)                                                               \
+    (gSaveContext.dpadButtonStatus[0] = gSaveContext.dpadButtonStatus[1] = gSaveContext.dpadButtonStatus[2] = \
+         gSaveContext.dpadButtonStatus[3] = (status))
 
 
 /*

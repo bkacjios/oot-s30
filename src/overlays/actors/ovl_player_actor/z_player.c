@@ -1687,7 +1687,8 @@ static LinkAnimationHeader* D_80854378[] = {
 static u8 D_80854380[2] = { PLAYER_MWA_SPIN_ATTACK_1H, PLAYER_MWA_SPIN_ATTACK_2H };
 static u8 D_80854384[2] = { PLAYER_MWA_BIG_SPIN_1H, PLAYER_MWA_BIG_SPIN_2H };
 
-static u16 sItemButtons[] = { BTN_B, BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT };
+// S30: and the D-pad item slots (BUTTON_ITEM 4-7)
+static u16 sItemButtons[] = { BTN_B, BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT, BTN_DUP, BTN_DDOWN, BTN_DLEFT, BTN_DRIGHT };
 
 static u8 sMagicSpellCosts[] = { 12, 24, 24, 12, 24, 12 };
 
@@ -2391,6 +2392,8 @@ s8 Player_ItemToItemAction(s32 item) {
         return PLAYER_IA_SWORD_CS;
     } else if (item == ITEM_FISHING_POLE) {
         return PLAYER_IA_FISHING_POLE;
+    } else if (item >= ARRAY_COUNT(sItemActions)) {
+        return PLAYER_IA_NONE; // S30: shields, tunics and boots on an item button
     } else {
         return sItemActions[item];
     }
@@ -2623,10 +2626,12 @@ s32 Player_ItemIsItemAction(s32 item1, s32 itemAction) {
 }
 
 s32 Player_GetItemOnButton(PlayState* play, s32 index) {
-    if (index >= 4) {
+    if (index >= BUTTON_ITEM_MAX) {
         return ITEM_NONE;
     } else if (play->bombchuBowlingStatus != 0) {
-        return (play->bombchuBowlingStatus > 0) ? ITEM_BOMBCHU : ITEM_NONE;
+        return ((play->bombchuBowlingStatus > 0) && (index < 4)) ? ITEM_BOMBCHU : ITEM_NONE;
+    } else if (index >= 4) {
+        return Interface_GetDpadItem(index - 4);
     } else if (index == 0) {
         return B_BTN_ITEM;
     } else if (index == 1) {
@@ -2635,6 +2640,158 @@ s32 Player_GetItemOnButton(PlayState* play, s32 index) {
         return C_BTN_ITEM(1);
     } else {
         return C_BTN_ITEM(2);
+    }
+}
+
+/**
+ * S30: whether an item with `itemAction` is on a usable D-pad slot
+ */
+static s32 Player_ItemOnDpad(Player* this, s32 itemAction) {
+    s32 i;
+
+    for (i = 0; i < 4; i++) {
+        if (Player_ItemIsItemAction(Interface_GetDpadItem(i), itemAction)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * S30: a shield, tunic or boots on an item button puts it on; a tunic or boots already worn come off (back to
+ * Kokiri). From Ship of Harkinian's assignable tunics and boots.
+ */
+static void Player_UseEquipItem(Player* this, PlayState* play, s32 item) {
+    u16 value;
+
+    if (item >= ITEM_BOOTS_KOKIRI) {
+        value = item - ITEM_BOOTS_KOKIRI + EQUIP_VALUE_BOOTS_KOKIRI;
+        Inventory_ChangeEquipment(EQUIP_TYPE_BOOTS,
+                                  (CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == value) ? EQUIP_VALUE_BOOTS_KOKIRI : value);
+        Player_SetEquipmentData(play, this);
+        func_808328EC(this, (CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS) == EQUIP_VALUE_BOOTS_IRON) ? NA_SE_PL_WALK_HEAVYBOOTS
+                                                                                         : NA_SE_PL_CHANGE_ARMS);
+    } else if (item >= ITEM_TUNIC_KOKIRI) {
+        value = item - ITEM_TUNIC_KOKIRI + EQUIP_VALUE_TUNIC_KOKIRI;
+        Inventory_ChangeEquipment(EQUIP_TYPE_TUNIC,
+                                  (CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == value) ? EQUIP_VALUE_TUNIC_KOKIRI : value);
+        Player_SetEquipmentData(play, this);
+        func_808328EC(this, NA_SE_PL_CHANGE_ARMS);
+    } else {
+        value = item - ITEM_SHIELD_DEKU + EQUIP_VALUE_SHIELD_DEKU;
+        if (CUR_EQUIP_VALUE(EQUIP_TYPE_SHIELD) != value) {
+            Inventory_ChangeEquipment(EQUIP_TYPE_SHIELD, value);
+            Player_SetEquipmentData(play, this);
+            func_808328EC(this, NA_SE_PL_CHANGE_ARMS);
+        }
+    }
+}
+
+/**
+ * S30: R while aiming the bow cycles the arrow among normal, fire, ice and light (those owned, with the magic
+ * for them). From Ship of Harkinian's arrow cycle; with it, magic arrows take their magic when shot, not drawn.
+ */
+static const s8 sArrowCycleOrder[] = { PLAYER_IA_BOW, PLAYER_IA_BOW_FIRE, PLAYER_IA_BOW_ICE, PLAYER_IA_BOW_LIGHT };
+
+static s32 Player_HasArrowType(s32 itemAction) {
+    switch (itemAction) {
+        case PLAYER_IA_BOW_FIRE:
+            return (INV_CONTENT(ITEM_ARROW_FIRE) == ITEM_ARROW_FIRE) &&
+                   (gSaveContext.save.info.playerData.magic >= sMagicArrowCosts[0]);
+        case PLAYER_IA_BOW_ICE:
+            return (INV_CONTENT(ITEM_ARROW_ICE) == ITEM_ARROW_ICE) &&
+                   (gSaveContext.save.info.playerData.magic >= sMagicArrowCosts[1]);
+        case PLAYER_IA_BOW_LIGHT:
+            return (INV_CONTENT(ITEM_ARROW_LIGHT) == ITEM_ARROW_LIGHT) &&
+                   (gSaveContext.save.info.playerData.magic >= sMagicArrowCosts[2]);
+        default:
+            return true;
+    }
+}
+
+void EnArrow_Init(Actor* thisx, PlayState* play);
+
+static s32 Player_TryCycleArrow(Player* this, PlayState* play) {
+    EnArrow* arrow = (EnArrow*)this->heldActor;
+    s32 i;
+    s32 cur = 0;
+    s32 next = PLAYER_IA_BOW;
+    s32 bowItem;
+
+    if (!LINK_IS_ADULT || (gSaveContext.minigameState != 0) || (play->sceneId == SCENE_SHOOTING_GALLERY) ||
+        (this->stateFlags1 & PLAYER_STATE1_23) || (this->rideActor != NULL) || (INV_CONTENT(ITEM_BOW) != ITEM_BOW) ||
+        ((INV_CONTENT(ITEM_ARROW_FIRE) != ITEM_ARROW_FIRE) && (INV_CONTENT(ITEM_ARROW_ICE) != ITEM_ARROW_ICE) &&
+         (INV_CONTENT(ITEM_ARROW_LIGHT) != ITEM_ARROW_LIGHT)) ||
+        (this->heldItemAction < PLAYER_IA_BOW) || (this->heldItemAction > PLAYER_IA_BOW_LIGHT) ||
+        ((this->unk_6AD != 2) && (this->upperActionFunc != func_808351D4)) || (arrow == NULL) ||
+        (arrow->actor.id != ACTOR_EN_ARROW)) {
+        return false;
+    }
+
+    for (i = 0; i < ARRAY_COUNT(sArrowCycleOrder); i++) {
+        if (sArrowCycleOrder[i] == this->heldItemAction) {
+            cur = i;
+        }
+    }
+    for (i = 1; i <= ARRAY_COUNT(sArrowCycleOrder); i++) {
+        if (Player_HasArrowType(sArrowCycleOrder[(cur + i) % ARRAY_COUNT(sArrowCycleOrder)])) {
+            next = sArrowCycleOrder[(cur + i) % ARRAY_COUNT(sArrowCycleOrder)];
+            break;
+        }
+    }
+
+    gSaveContext.magicState = MAGIC_STATE_IDLE;
+    this->heldItemAction = this->itemAction = next;
+
+    // The nocked arrow becomes the new kind
+    if (arrow->actor.child != NULL) {
+        Actor_Kill(arrow->actor.child);
+        arrow->actor.child = NULL;
+    }
+    if (arrow->actor.params <= ARROW_LIGHT) {
+        Effect_Delete(play, arrow->effectIndex); // EnArrow_Init adds another
+    }
+    arrow->actor.params = (next == PLAYER_IA_BOW) ? ARROW_NORMAL : ARROW_FIRE + (next - PLAYER_IA_BOW_FIRE);
+    EnArrow_Init(&arrow->actor, play);
+
+    // And the bow on the item buttons
+    bowItem = (next == PLAYER_IA_BOW) ? ITEM_BOW : ITEM_BOW_FIRE + (next - PLAYER_IA_BOW_FIRE);
+    for (i = 1; i < BUTTON_ITEM_MAX; i++) {
+        if ((BUTTON_ITEM(i) == ITEM_BOW) || ((BUTTON_ITEM(i) >= ITEM_BOW_FIRE) && (BUTTON_ITEM(i) <= ITEM_BOW_LIGHT))) {
+            BUTTON_ITEM(i) = bowItem;
+            BUTTON_SLOT(i) = SLOT_BOW;
+            Interface_LoadItemIcon1(play, i);
+            BUTTON_STATUS(i) = BTN_ENABLED;
+        }
+    }
+    return true;
+}
+
+/**
+ * S30: put on a shield, tunic or boots from its C or D-pad button. Every frame, in most states (as Ship of
+ * Harkinian does: iron boots while swimming, say), whether or not the button is enabled for items.
+ */
+static void Player_ProcessEquipButtons(Player* this, PlayState* play) {
+    extern char gItemAgeReqs[];
+    s32 i;
+    s32 item;
+
+    if ((this->actor.id != ACTOR_PLAYER) || (sControlInput == NULL) ||
+        (this->stateFlags1 & (PLAYER_STATE1_5 | PLAYER_STATE1_TALKING | PLAYER_STATE1_DEAD | PLAYER_STATE1_28 |
+                              PLAYER_STATE1_29)) ||
+        (this->stateFlags2 & PLAYER_STATE2_USING_OCARINA) || (this->csAction != PLAYER_CSACTION_NONE)) {
+        return;
+    }
+
+    for (i = 1; i < BUTTON_ITEM_MAX; i++) {
+        if (CHECK_BTN_ALL(sControlInput->press.button, sItemButtons[i])) {
+            item = BUTTON_ITEM(i);
+            if ((item >= ITEM_SHIELD_DEKU) && (item <= ITEM_BOOTS_HOVER) &&
+                ((gItemAgeReqs[item] == 9) || (gItemAgeReqs[item] == ((void)0, gSaveContext.save.linkAge)))) {
+                Player_UseEquipItem(this, play, item);
+            }
+            break;
+        }
     }
 }
 
@@ -2657,7 +2814,7 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
 
         if (!Player_ItemIsItemAction(C_BTN_ITEM(0), maskItemAction) &&
             !Player_ItemIsItemAction(C_BTN_ITEM(1), maskItemAction) &&
-            !Player_ItemIsItemAction(C_BTN_ITEM(2), maskItemAction)) {
+            !Player_ItemIsItemAction(C_BTN_ITEM(2), maskItemAction) && !Player_ItemOnDpad(this, maskItemAction)) {
             this->currentMask = PLAYER_MASK_NONE;
         }
     }
@@ -2665,7 +2822,8 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
     if (!(this->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_29)) && !func_8008F128(this)) {
         if (this->itemAction >= PLAYER_IA_FISHING_POLE) {
             if (!Player_ItemIsInUse(this, B_BTN_ITEM) && !Player_ItemIsInUse(this, C_BTN_ITEM(0)) &&
-                !Player_ItemIsInUse(this, C_BTN_ITEM(1)) && !Player_ItemIsInUse(this, C_BTN_ITEM(2))) {
+                !Player_ItemIsInUse(this, C_BTN_ITEM(1)) && !Player_ItemIsInUse(this, C_BTN_ITEM(2)) &&
+                !Player_ItemOnDpad(this, this->itemAction)) {
                 Player_UseItem(play, this, ITEM_NONE);
                 return;
             }
@@ -2678,6 +2836,10 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
         }
 
         item = Player_GetItemOnButton(play, i);
+
+        if ((item >= ITEM_SHIELD_DEKU) && (item <= ITEM_BOOTS_HOVER)) {
+            return; // S30: put on by Player_ProcessEquipButtons
+        }
 
         if (item >= ITEM_NONE_FE) {
             for (i = 0; i < ARRAY_COUNT(sItemButtons); i++) {
@@ -2810,8 +2972,9 @@ s32 func_8083442C(Player* this, PlayState* play) {
                 magicArrowType = arrowType - ARROW_FIRE;
 
                 if (this->unk_860 >= 0) {
+                    // S30: the magic is taken when shot (EnArrow_Shoot), so that cycling arrows costs nothing
                     if ((magicArrowType >= 0) && (magicArrowType <= 2) &&
-                        !Magic_RequestChange(play, sMagicArrowCosts[magicArrowType], MAGIC_CONSUME_NOW)) {
+                        (gSaveContext.save.info.playerData.magic < sMagicArrowCosts[magicArrowType])) {
                         arrowType = ARROW_NORMAL;
                     }
 
@@ -11985,7 +12148,14 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         sSavedCurrentMask = this->currentMask;
 
         if (!(this->stateFlags3 & PLAYER_STATE3_2)) {
+            // S30: R cycles arrows while aiming, instead of shielding
+            if ((this->actor.id == ACTOR_PLAYER) && (input != NULL) && CHECK_BTN_ALL(input->press.button, BTN_R) &&
+                Player_TryCycleArrow(this, play)) {
+                input->cur.button &= ~BTN_R;
+                input->press.button &= ~BTN_R;
+            }
             this->actionFunc(this, play);
+            Player_ProcessEquipButtons(this, play); // S30
         }
 
         Player_UpdateCamAndSeqModes(play, this);

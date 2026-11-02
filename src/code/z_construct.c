@@ -19,13 +19,14 @@ void Interface_Destroy(PlayState* play) {
     Map_Destroy(play);
 }
 
-#define ICON_ITEM_SEGMENT_SIZE (4 * ITEM_ICON_SIZE)
+#define ICON_ITEM_SEGMENT_SIZE (BUTTON_ITEM_MAX * ITEM_ICON_SIZE) // S30: and the D-pad items
 
 void Interface_Init(PlayState* play) {
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
     u32 parameterSize;
     u16 doActionOffset;
     u8 timerId;
+    s32 btn;
 
     gSaveContext.sunsSongState = SUNSSONG_INACTIVE;
     gSaveContext.nextHudVisibilityMode = gSaveContext.hudVisibilityMode = HUD_VISIBILITY_NO_CHANGE;
@@ -153,6 +154,14 @@ void Interface_Init(PlayState* play) {
         gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (3 * ITEM_ICON_SIZE));
     }
 
+    for (btn = 4; btn < BUTTON_ITEM_MAX; btn++) {
+        if (BUTTON_ITEM(btn) < 0xF0) {
+            DMA_REQUEST_SYNC(interfaceCtx->iconItemSegment + (btn * ITEM_ICON_SIZE), GET_ITEM_ICON_VROM(BUTTON_ITEM(btn)),
+                             ITEM_ICON_SIZE, "../z_construct.c", 0);
+            gfx_texture_cache_invalidate(interfaceCtx->iconItemSegment + (btn * ITEM_ICON_SIZE));
+        }
+    }
+
     PRINTF("ＥＶＥＮＴ＝%d\n", ((void)0, gSaveContext.timerState));
 
     if ((gSaveContext.timerState == TIMER_STATE_ENV_HAZARD_TICK) ||
@@ -176,7 +185,7 @@ void Interface_Init(PlayState* play) {
             timerId = TIMER_ID_SUB;
         }
 
-        gSaveContext.timerX[timerId] = 26;
+        gSaveContext.timerX[timerId] = 26 + S30_HUD_LEFT;
 
         if (gSaveContext.save.info.playerData.healthCapacity > 0xA0) {
             gSaveContext.timerY[timerId] = 54; // two rows of hearts
@@ -503,9 +512,9 @@ void Regs_InitDataImpl(void) {
     XREG(46) = 16;
     XREG(47) = 8;
     R_MAGIC_METER_Y_HIGHER = 34;
-    R_MAGIC_METER_X = 18;
+    R_MAGIC_METER_X = 18 + S30_HUD_LEFT;
     R_MAGIC_METER_Y_LOWER = 42;
-    R_MAGIC_FILL_X = 26;
+    R_MAGIC_FILL_X = 26 + S30_HUD_LEFT;
     XREG(52) = 0;
     XREG(53) = 1;
     R_TEXT_INIT_XPOS = 65;
@@ -604,7 +613,7 @@ void Regs_InitDataImpl(void) {
     R_PAUSE_BUTTON_RIGHT_MOVE_OFFSET_X = -40;
     WREG(27) = 0;
     WREG(28) = 0;
-    R_OW_MINIMAP_X = 238;
+    R_OW_MINIMAP_X = 238 + S30_HUD_RIGHT;
     R_OW_MINIMAP_Y = 164;
     R_MINIMAP_DISABLED = false;
     WREG(32) = 122;
@@ -645,7 +654,7 @@ void Regs_InitDataImpl(void) {
     R_PAUSE_INFO_PANEL_ICON_EQUIP_X(LANGUAGE_FRA) = -50;
 #endif
 
-    R_DGN_MINIMAP_X = 204;
+    R_DGN_MINIMAP_X = 204 + S30_HUD_RIGHT;
     R_DGN_MINIMAP_Y = 140;
     WREG(87) = 80;
     WREG(88) = 70;

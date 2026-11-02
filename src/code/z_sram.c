@@ -207,6 +207,25 @@ static Inventory sNewSaveInventory = {
 static Checksum sNewSaveChecksum = { 0 };
 
 /**
+ * S30: empty D-pad item slots for a save made before they existed (or a new one), whose bytes are zero
+ */
+static void Sram_InitDpadItems(void) {
+    s32 i;
+
+    if (gSaveContext.save.info.dpadSet != DPAD_SET) {
+        for (i = 0; i < 4; i++) {
+            if (gSaveContext.save.info.dpadSet != DPAD_SET_V1) {
+                gSaveContext.save.info.dpadItems[i] = ITEM_NONE;
+                gSaveContext.save.info.dpadSlots[i] = SLOT_NONE;
+            }
+            gSaveContext.save.info.dpadItemsOtherAge[i] = ITEM_NONE;
+            gSaveContext.save.info.dpadSlotsOtherAge[i] = SLOT_NONE;
+        }
+        gSaveContext.save.info.dpadSet = DPAD_SET;
+    }
+}
+
+/**
  *  Initialize new save.
  *  This save has an empty inventory with 3 hearts and single magic.
  */
@@ -228,6 +247,7 @@ void Sram_InitNewSave(void) {
     gSaveContext.save.info.playerData.magicLevel = 0;
     gSaveContext.save.info.infTable[INFTABLE_INDEX_1DX] = 1;
     gSaveContext.save.info.sceneFlags[SCENE_WATER_TEMPLE].swch = 0x40000000;
+    Sram_InitDpadItems();
 }
 
 static SavePlayerData sDebugSavePlayerData = {
@@ -381,6 +401,7 @@ void Sram_InitDebugSave(void) {
     gSaveContext.save.info.equips = sDebugSaveEquips;
     gSaveContext.save.info.inventory = sDebugSaveInventory;
     gSaveContext.save.info.checksum = sDebugSaveChecksum;
+    Sram_InitDpadItems();
 
     gSaveContext.save.info.horseData.sceneId = SCENE_HYRULE_FIELD;
     gSaveContext.save.info.horseData.pos.x = -1840;
@@ -454,6 +475,7 @@ void Sram_OpenSave(SramContext* sramCtx) {
     PRINTF(T("ぽいんと＝%x(%d)\n", "Point=%x(%d)\n"), i, gSaveContext.fileNum);
 
     MemCopy(&gSaveContext, sramCtx->readBuff + i, sizeof(Save));
+    Sram_InitDpadItems();
 
     PRINTF_COLOR_YELLOW();
     PRINTF("SCENE_DATA_ID = %d   SceneNo = %d\n", gSaveContext.save.info.playerData.savedSceneId,

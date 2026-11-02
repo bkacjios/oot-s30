@@ -20,6 +20,7 @@
 #include "z_lib.h"
 #include "effect.h"
 #include "play_state.h"
+#include "save.h"
 
 #include "assets/objects/gameplay_keep/arrow_skel.h"
 #include "assets/objects/gameplay_keep/gArrow1_Anim.h"
@@ -195,6 +196,12 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
             case ARROW_ICE:
             case ARROW_LIGHT:
                 Player_PlaySfx(player, NA_SE_IT_MAGIC_ARROW_SHOT);
+                // S30: the magic is taken now rather than when drawn (the player's arrow cycle)
+                {
+                    static const s16 sMagicArrowCosts[] = { 4, 4, 8 };
+
+                    Magic_RequestChange(play, sMagicArrowCosts[this->actor.params - ARROW_FIRE], MAGIC_CONSUME_NOW);
+                }
                 break;
         }
 

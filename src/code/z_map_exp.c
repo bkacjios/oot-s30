@@ -317,7 +317,7 @@ void Map_Init(PlayState* play) {
             R_COMPASS_OFFSET_X = gMapData->owCompassInfo[mapIndex][2];
             R_COMPASS_OFFSET_Y = gMapData->owCompassInfo[mapIndex][3];
             Map_InitData(play, mapIndex);
-            R_OW_MINIMAP_X = gMapData->owMinimapPosX[mapIndex];
+            R_OW_MINIMAP_X = gMapData->owMinimapPosX[mapIndex] + S30_HUD_RIGHT;
             R_OW_MINIMAP_Y = gMapData->owMinimapPosY[mapIndex];
             break;
         case SCENE_DEKU_TREE:
@@ -385,7 +385,7 @@ void Minimap_DrawCompassIcons(PlayState* play) {
         tempZ = player->actor.world.pos.z;
         tempX /= R_COMPASS_SCALE_X;
         tempZ /= R_COMPASS_SCALE_Y;
-        Matrix_Translate((R_COMPASS_OFFSET_X + tempX) / 10.0f, (R_COMPASS_OFFSET_Y - tempZ) / 10.0f, 0.0f, MTXMODE_NEW);
+        Matrix_Translate((R_COMPASS_OFFSET_X + tempX) / 10.0f + S30_HUD_RIGHT, (R_COMPASS_OFFSET_Y - tempZ) / 10.0f, 0.0f, MTXMODE_NEW);
         Matrix_Scale(0.4f, 0.4f, 0.4f, MTXMODE_APPLY);
         Matrix_RotateX(-1.6f, MTXMODE_APPLY);
         tempX = (0x7FFF - player->actor.shape.rot.y) / 0x400;
@@ -399,7 +399,7 @@ void Minimap_DrawCompassIcons(PlayState* play) {
         tempZ = sPlayerInitialPosZ;
         tempX /= R_COMPASS_SCALE_X;
         tempZ /= R_COMPASS_SCALE_Y;
-        Matrix_Translate((R_COMPASS_OFFSET_X + tempX) / 10.0f, (R_COMPASS_OFFSET_Y - tempZ) / 10.0f, 0.0f, MTXMODE_NEW);
+        Matrix_Translate((R_COMPASS_OFFSET_X + tempX) / 10.0f + S30_HUD_RIGHT, (R_COMPASS_OFFSET_Y - tempZ) / 10.0f, 0.0f, MTXMODE_NEW);
         Matrix_Scale(VREG(9) / 100.0f, VREG(9) / 100.0f, VREG(9) / 100.0f, MTXMODE_APPLY);
         Matrix_RotateX(VREG(52) / 10.0f, MTXMODE_APPLY);
         Matrix_RotateY(sPlayerInitialDirection / 10.0f, MTXMODE_APPLY);

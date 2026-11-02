@@ -213,10 +213,18 @@ typedef struct InterfaceContext {
 #define S30_SHOULDER_H 20
 #define S30_SHOULDER_ICON 20
 
+// HUD at the sides moved out into the widescreen margin (gfx.c WIDE_PAD, 20 px each side), by as much as the
+// shoulder pill sits in from the right edge (22 px): hearts, magic, rupees and keys left, the minimap right
+#define S30_HUD_LEFT (-16)
+#define S30_HUD_RIGHT 16
+
 // Select pill: centre (the "Navi" label is centred on it)
 #define C_UP_BUTTON_X 210
 #define C_UP_BUTTON_Y 15
 #else
+#define S30_HUD_LEFT 0
+#define S30_HUD_RIGHT 0
+
 #define C_LEFT_BUTTON_X 227
 #define C_LEFT_BUTTON_Y 18
 
@@ -293,6 +301,7 @@ void Interface_InitHorsebackArchery(struct PlayState* play);
 void func_800849EC(struct PlayState* play);
 void Interface_LoadItemIcon1(struct PlayState* play, u16 button);
 void Interface_LoadItemIcon2(struct PlayState* play, u16 button);
+u8 Interface_GetDpadItem(s32 dir);
 void func_80084BF4(struct PlayState* play, u16 flag);
 u8 Item_Give(struct PlayState* play, u8 item);
 u8 Item_CheckObtainability(u8 item);

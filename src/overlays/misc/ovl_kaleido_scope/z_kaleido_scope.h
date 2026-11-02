@@ -251,6 +251,9 @@ void KaleidoScope_DrawEquipment(struct PlayState* play);
 void KaleidoScope_SetCursorPos(PauseContext* pauseCtx, u16 index, Vtx* vtx);
 void KaleidoScope_DrawItemSelect(struct PlayState* play);
 void KaleidoScope_UpdateItemEquip(struct PlayState* play);
+// S30: the buttons items go on from the pause menu: C, and the D-pad item slots
+#define KALEIDO_EQUIP_BUTTONS (BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT | BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT)
+void KaleidoScope_SetupItemEquip(struct PlayState* play, u16 item, u16 slot, s16 animX, s16 animY);
 void KaleidoScope_DrawDungeonMap(struct PlayState* play, GraphicsContext* gfxCtx);
 void KaleidoScope_DrawWorldMap(struct PlayState* play, GraphicsContext* gfxCtx);
 void KaleidoScope_UpdatePrompt(struct PlayState* play);

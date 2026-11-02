@@ -583,6 +583,22 @@ void KaleidoScope_DrawEquipment(PlayState* play) {
             }
         }
 
+        // S30: a shield, tunic or boots onto a C or D-pad button, to put on from there (Ship of Harkinian's
+        // assignable tunics and boots). Their slot on the button is the item itself (no inventory slot).
+        if ((pauseCtx->cursorSpecialPos == 0) && (cursorItem != PAUSE_ITEM_NONE) &&
+            (pauseCtx->state == PAUSE_STATE_MAIN) && (pauseCtx->mainState == PAUSE_MAIN_STATE_IDLE) &&
+            CHECK_BTN_ANY(input->press.button, KALEIDO_EQUIP_BUTTONS) &&
+            (pauseCtx->cursorX[PAUSE_EQUIP] != EQUIP_CURSOR_X_UPG) &&
+            (pauseCtx->cursorY[PAUSE_EQUIP] != EQUIP_TYPE_SWORD)) {
+            if (CHECK_AGE_REQ_EQUIP(pauseCtx->cursorY[PAUSE_EQUIP], pauseCtx->cursorX[PAUSE_EQUIP]) &&
+                CHECK_OWNED_EQUIP(pauseCtx->cursorY[PAUSE_EQUIP], pauseCtx->cursorX[PAUSE_EQUIP] - 1)) {
+                KaleidoScope_SetupItemEquip(play, cursorItem, cursorItem, pauseCtx->equipVtx[cursorSlot * 4].v.ob[0] * 10,
+                                            pauseCtx->equipVtx[cursorSlot * 4].v.ob[1] * 10);
+            } else {
+                SFX_PLAY_CENTERED(NA_SE_SY_ERROR);
+            }
+        }
+
         if (oldCursorPoint != pauseCtx->cursorPoint[PAUSE_EQUIP]) {
             SFX_PLAY_CENTERED(NA_SE_SY_CURSOR);
         }
