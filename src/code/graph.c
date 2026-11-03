@@ -565,7 +565,7 @@ void Graph_ThreadEntry(UNUSED void* arg) {
 
 #ifdef LINUX
     if (gS30EnableAudio) {
-        S30Audio_Init();
+        S30_StartAudio(); // the audio thread (src/s30/main.c)
     }
 #endif
 

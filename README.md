@@ -39,9 +39,9 @@ make -f Makefile.s30 -j$(nproc)       # build zelda
 
 ## Installing
 
-Copy `zelda` and `data/` to `/mnt/sd/oot` on the card. The launcher entry
+Copy `zelda` and `data/` to `/mnt/sd/home/ports/oot` on the card. The launcher entry
 (`apps/Ocarina of Time.sh`) starts it from there and reads optional debug
-variables from `/mnt/sd/oot/oot.env`, one `VAR=value` per line.
+variables from `/mnt/sd/home/ports/oot/oot.env`, one `VAR=value` per line.
 
 ## Runtime options
 

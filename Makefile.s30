@@ -8,6 +8,8 @@
 # WORK is the pocketgo-s30 build tree (sysroot + armv7-clang wrapper).
 
 WORK ?= ../../s30-build
+# The shared N64 platform library (display, renderer, audio, input)
+N64LIB ?= ../../n64
 SYSROOT := $(abspath $(WORK)/sysroot)
 PYTHON ?= .venv/bin/python3
 VERSION ?= gc-us
@@ -34,12 +36,13 @@ CFLAGS := $(TARGET_FLAGS) -O2 -Wall -std=gnu23 -DLINUX -D_LANGUAGE_C -D_GNU_SOUR
     -DREGION_JP=0 -DREGION_US=1 -DREGION_EU=2 -DREGION_NULL=255 \
     -Wno-incompatible-pointer-types -Wno-int-conversion \
     -g -fno-toplevel-reorder -fwrapv -fno-strict-aliasing -MMD -MP \
-    -Iinclude -Iinclude/s30 -Isrc -I. -Iextracted/$(VERSION) -Ibuild/$(VERSION)
+    -Iinclude -Iinclude/s30 -I$(N64LIB)/include/s30 -Isrc -I. -Iextracted/$(VERSION) -Ibuild/$(VERSION)
 
 BUILD_DIR := build_s30
+include $(N64LIB)/n64.mk
 ASSET_DIR := build_assets/assets
 TARGET := zelda
-LIBS := -lGLESv2 -lEGL -lgbm -ldrm -lasound -lpthread -lm
+LIBS := $(N64LIB_LIBS)
 
 OVERLAY_SRCS := $(filter-out %.inc.c %/z_map_mark_data.c %/z_lmap_mark_data.c,$(wildcard src/overlays/*/*/*.c))
 OVERLAY_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/src/%.o,$(OVERLAY_SRCS))
@@ -400,16 +403,13 @@ OBJECTS := \
     $(BUILD_DIR)/src/libultra/os/yieldthread.o \
     $(BUILD_DIR)/src/libultra/reg/_getcount.o \
     $(BUILD_DIR)/src/libultra/reg/_setcompare.o \
-    $(BUILD_DIR)/src/audio/internal/mixer.o \
     $(BUILD_DIR)/src/code/kanread.o \
     $(BUILD_DIR)/src/libultra/gu/sins.o \
     $(BUILD_DIR)/src/libultra/gu/coss.o \
     $(BUILD_DIR)/src/linux/reimpl.o \
     $(BUILD_DIR)/src/s30/main.o \
-    $(BUILD_DIR)/src/s30/display.o \
-    $(BUILD_DIR)/src/s30/gfx.o \
-    $(BUILD_DIR)/src/s30/audio.o \
-    $(BUILD_DIR)/src/s30/input.o
+    $(BUILD_DIR)/src/s30/buttons.o \
+    $(N64LIB_OBJS)
 
 ALL_OBJECTS := $(OBJECTS) $(OVERLAY_OBJECTS)
 

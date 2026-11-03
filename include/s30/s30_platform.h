@@ -9,6 +9,10 @@ extern const char* gS30SaveFile;
 // Frame pacing: panel refreshes per game frame (the game's R_UPDATE_RATE)
 void S30Display_SetUpdateRate(int vblanks);
 
+// Starts the audio thread (src/s30/main.c: the game's AudioThread_Update on
+// the shared library's audio thread)
+void S30_StartAudio(void);
+
 // Display-list markers for the renderer (src/s30/gfx.c): a command whose w0 is
 // S30_GFX_MARK and whose w1 names the operation
 #define S30_GFX_MARK 0x424C4E44u        // "BLND"

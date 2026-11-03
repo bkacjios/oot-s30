@@ -41,30 +41,8 @@
 
 /* ---- Implementation function prototypes ---- */
 
-void aClearBufferImpl(uint16_t addr, int nbytes);
-void aLoadBufferImpl(const void* source_addr, uint16_t dest_addr, uint16_t nbytes, uint8_t copy);
-void aSaveBufferImpl(uint16_t source_addr, int16_t* dest_addr, uint16_t nbytes);
-void aLoadADPCMImpl(int num_entries_times_16, const int16_t* book_source_addr);
-void aSetBufferImpl(uint8_t flags, uint16_t in, uint16_t out, uint16_t nbytes);
-void aDMEMMoveImpl(uint16_t in_addr, uint16_t out_addr, int nbytes);
-void aSetLoopImpl(ADPCM_STATE* adpcm_loop_state);
-void aADPCMdecImpl(uint8_t flags, ADPCM_STATE state);
-void aResampleImpl(uint8_t flags, uint16_t pitch, RESAMPLE_STATE state);
-void aEnvSetup1Impl(uint8_t initialVolReverb, uint16_t rampReverb, uint16_t rampLeft, uint16_t rampRight);
-void aEnvSetup2Impl(uint16_t initialVolLeft, uint16_t initialVolRight);
-void aEnvMixerImpl(uint16_t dmemIn, uint16_t count, uint8_t swapReverb, uint8_t x0, uint8_t x1,
-                   uint8_t x2, uint8_t x3, uint32_t dmemDests, uint32_t opBits);
-void aInterleaveImpl(uint16_t outAddr, uint16_t inL, uint16_t inR, uint16_t count);
-void aInterlImpl(uint16_t in_addr, uint16_t out_addr, uint16_t n_samples);
-void aMixImpl(uint16_t count, int16_t gain, uint16_t in_addr, uint16_t out_addr);
-void aFilterImpl(uint8_t flags, uint16_t countOrBuf, int16_t* state_or_filter);
-void aHiLoGainImpl(uint8_t g, uint16_t count, uint16_t dmemIn);
-void aDuplicateImpl(uint16_t count, uint16_t in_addr, uint16_t out_addr);
-void aAddMixerImpl(uint16_t count, uint16_t in_addr, uint16_t out_addr, uint16_t a4);
-void aS8DecImpl(uint8_t flags, ADPCM_STATE state);
-void aResampleZohImpl(uint16_t pitch, uint16_t startFract);
-void aUnkCmd3Impl(uint16_t a1, uint16_t a2, uint16_t a3);
-void aUnkCmd19Impl(uint8_t f, uint16_t count, uint16_t out_addr, uint16_t in_addr);
+/* The software microcode (n64/src/mixer.c, s30_mixer.h) */
+#include "s30_mixer.h"
 
 /* ---- Macro redirections (strip pkt, call Impl directly) ---- */
 

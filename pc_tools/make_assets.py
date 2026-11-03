@@ -151,33 +151,42 @@ compiled = {}
 compile_failed = []
 first_error_shown = False
 
-total = len(segments)
-for i, (seg_name, c_paths) in enumerate(segments.items(), 1):
-    print(f"\r[{i}/{total}] {seg_name} ({len(c_paths)} files)...                    ", end="", flush=True)
+# Parallel and incremental: an object newer than its source is reused (after
+# a change to CFLAGS that affects code, delete build_assets) (as in ports/mm)
+from concurrent.futures import ThreadPoolExecutor
+
+
+def compile_one(job):
+    seg_name, j, c_path = job
+    o_path = f"{BUILD_DIR}/{seg_name}_{j}.o"
+    if os.path.exists(o_path) and os.path.getmtime(o_path) > os.path.getmtime(c_path):
+        return job, o_path, None
+    cmd = f"{CC} {CFLAGS} {c_path} -o {o_path}"
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return job, o_path, None if r.returncode == 0 else (cmd, r.stderr)
+
+
+jobs = [(seg, j, c) for seg, paths in segments.items() for j, c in enumerate(paths)]
+results = {}
+with ThreadPoolExecutor(os.cpu_count()) as pool:
+    for n, (job, o_path, err) in enumerate(pool.map(compile_one, jobs), 1):
+        print(f"\r[{n}/{len(jobs)}] {job[0]}...                    ", end="", flush=True)
+        results[job] = (o_path, err)
+
+for seg_name, c_paths in segments.items():
     o_paths = []
-    failed = False
-    
     for j, c_path in enumerate(c_paths):
-        o_path = f"{BUILD_DIR}/{seg_name}_{j}.o"
-        
-        cmd = f"{CC} {CFLAGS} {c_path} -o {o_path}"
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        if r.returncode == 0:
-            o_paths.append(o_path)
-        else:
+        o_path, err = results[(seg_name, j, c_path)]
+        if err:
             if not first_error_shown:
-                print(f"\n\n=== FIRST COMPILE ERROR ===")
-                print(f"Command: {cmd}")
-                print(f"Exit code: {r.returncode}")
-                print(f"STDERR:\n{r.stderr}")
-                print(f"STDOUT:\n{r.stdout}")
-                print("=" * 40 + "\n")
+                print(f"\n\n=== FIRST COMPILE ERROR ===\nCommand: {err[0]}\nSTDERR:\n{err[1]}\n" + "=" * 40)
                 first_error_shown = True
-            compile_failed.append((seg_name, c_path, r.stderr[:500]))
-            failed = True
+            compile_failed.append((seg_name, c_path, err[1][:500]))
             break
-    if not failed and o_paths:
-        compiled[seg_name] = o_paths
+        o_paths.append(o_path)
+    else:
+        if o_paths:
+            compiled[seg_name] = o_paths
 
 print(f"\nCompiled: {len(compiled)}, Failed: {len(compile_failed)}")
 
@@ -450,19 +459,14 @@ else:
 # Re-link ALL assets with port-sized segments.elf
 print("\n=== Re-linking all assets with port sizes ===")
 
-relinked = 0
-total = len(sorted_segs)
-for i, seg_name in enumerate(sorted_segs, 1):
-    print(f"\r[{i}/{total}] {seg_name}...                    ", end="", flush=True)
+def relink_one(seg_name):
     o_paths = compiled[seg_name]
     deps = seg_deps[seg_name]
     base = segment_bases.get(seg_name, "0")
     elf_path = f"{BUILD_DIR}/{seg_name}.elf"
     bin_path = f"{DATA_DIR}/{seg_name}.bin"
     seg_ld_path = f"{BUILD_DIR}/{seg_name}.ld"
-    
-    o_files = ' '.join(o_paths)
-    
+
     with open(seg_ld_path, 'w') as f:
         f.write(f"""
 SECTIONS {{
@@ -473,41 +477,45 @@ SECTIONS {{
     /DISCARD/ : {{ *(.comment) *(.note*) *(.eh_frame) *(.ARM.attributes) *(.ARM.exidx*) }}
 }}
 """)
-    
+
     dep_refs = f"-R {segments_elf}"
     for dep in deps:
         dep_elf = f"{BUILD_DIR}/{dep}.elf"
         if os.path.exists(dep_elf):
             dep_refs += f" -R {dep_elf}"
-    
+
+    # Link to a temporary name, then rename: other threads' links read this
+    # ELF (-R) and must never see it half-written (ld dies with SIGBUS, or
+    # reads garbage symbols)
+    tmp_elf = elf_path + ".tmp"
     r = subprocess.run(
-        f"{LD} -e 0 -T {seg_ld_path} -T {stub_ld_path} {dep_refs} {o_files} -o {elf_path} --no-check-sections",
-        shell=True, capture_output=True, text=True
-    )
-    
-    if r.returncode == 0:
-        subprocess.run(
-            f"{OBJCOPY} --strip-symbol=gIdentityMtx --strip-symbol=_gIdentityMtx "
-            f"--strip-symbol=gIdentityMtxF --strip-symbol=_gIdentityMtxF {elf_path}",
-            shell=True, capture_output=True, text=True
-        )
-        
-        r = subprocess.run(f"{NM} {elf_path} | grep -E 'Segment(Rom)?(Start|End)' | awk '{{print $3}}'",
-                           shell=True, capture_output=True, text=True)
-        if r.stdout.strip():
-            syms = [s for s in r.stdout.strip().split('\n') if s]
-            if syms:
-                strip_file = f"{BUILD_DIR}/{seg_name}_strip.txt"
-                with open(strip_file, 'w') as sf:
-                    sf.write('\n'.join(syms))
-                subprocess.run(f"{OBJCOPY} --strip-symbols={strip_file} {elf_path}",
-                              shell=True, capture_output=True, text=True)
-                os.remove(strip_file)
-        
-        subprocess.run(f"{OBJCOPY} -O binary --only-section=.data --only-section=.rodata --only-section=.bss {elf_path} {bin_path}",
-                      shell=True, capture_output=True)
-        
-        size = os.path.getsize(bin_path) if os.path.exists(bin_path) else 0
+        f"{LD} -e 0 -T {seg_ld_path} -T {stub_ld_path} {dep_refs} {' '.join(o_paths)} -o {tmp_elf} --no-check-sections",
+        shell=True, capture_output=True, text=True)
+    if r.returncode != 0:
+        return seg_name, 0
+    subprocess.run(
+        f"{OBJCOPY} --strip-symbol=gIdentityMtx --strip-symbol=_gIdentityMtx "
+        f"--strip-symbol=gIdentityMtxF --strip-symbol=_gIdentityMtxF {tmp_elf}",
+        shell=True, capture_output=True, text=True)
+    r = subprocess.run(f"{NM} {tmp_elf} | grep -E 'Segment(Rom)?(Start|End)' | awk '{{print $3}}'",
+                       shell=True, capture_output=True, text=True)
+    syms = [x for x in r.stdout.strip().split('\n') if x]
+    if syms:
+        strip_file = f"{BUILD_DIR}/{seg_name}_strip.txt"
+        with open(strip_file, 'w') as sf:
+            sf.write('\n'.join(syms))
+        subprocess.run(f"{OBJCOPY} --strip-symbols={strip_file} {tmp_elf}", shell=True, capture_output=True, text=True)
+        os.remove(strip_file)
+    subprocess.run(f"{OBJCOPY} -O binary --only-section=.data --only-section=.rodata --only-section=.bss {tmp_elf} {bin_path}",
+                   shell=True, capture_output=True)
+    os.replace(tmp_elf, elf_path)
+    return seg_name, os.path.getsize(bin_path) if os.path.exists(bin_path) else 0
+
+
+relinked = 0
+with ThreadPoolExecutor(os.cpu_count()) as pool:
+    for n, (seg_name, size) in enumerate(pool.map(relink_one, sorted_segs), 1):
+        print(f"\r[{n}/{len(sorted_segs)}] {seg_name}...                    ", end="", flush=True)
         if size > 0:
             built_segments[seg_name] = size
             relinked += 1

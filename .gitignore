@@ -38,6 +38,7 @@ zelda
 /src/linux/vrom_table.h
 build_assets/
 build_s30/
+build_s30.log
 data/
 imgui.ini
 note.md

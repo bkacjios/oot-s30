@@ -22,6 +22,7 @@
 #include "ultra64.h"
 #include "s30_audio.h"
 #include "s30_display.h"
+#include "s30_gfx.h"
 #include "s30_input.h"
 #include "s30_platform.h"
 
@@ -33,7 +34,19 @@ const char* gS30SaveFile;
 
 extern void Main(void* arg);
 extern void AudioRom_LoadAll(void);
-extern void S30Gfx_Init(void);
+extern const S30ButtonMap gS30Buttons[];
+extern const int gS30ButtonCount;
+extern uintptr_t gSegments[];
+extern void* AudioThread_Update(void); // returns AudioTask* (the audio headers aren't included here)
+
+/* The audio thread's update (the shared library's audio thread, audio lock held) */
+static void audio_update(void) {
+    AudioThread_Update();
+}
+
+void S30_StartAudio(void) {
+    S30Audio_Init(audio_update);
+}
 
 /* mkdir -p for a path's parent directories */
 static void make_parents(const char* path) {
@@ -151,9 +164,15 @@ int main(int argc, char** argv) {
     gS30EnableAudio = getenv("OOT_NOAUDIO") == NULL;
     printf("oot: data %s, save %s, audio %s\n", gS30DataDir, gS30SaveFile, gS30EnableAudio ? "on" : "off");
 
+    {
+        // F3DEX2 (S2DEX backgrounds), float Mtx, textures as u64 arrays
+        S30GfxConfig gfx = { S30_UCODE_F3DEX2, (uint32_t*)gSegments, 1, NULL, "OOT" };
+        S30Gfx_Configure(&gfx);
+    }
+    S30Display_SetRefresh(60.0f); // N64 NTSC: 3 refreshes a frame is 20 fps
     S30Display_Init();
     S30Gfx_Init();
-    S30Input_Init();
+    S30Input_Init(gS30Buttons, gS30ButtonCount);
     if (gS30EnableAudio) {
         AudioRom_LoadAll();
     }
