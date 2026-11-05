@@ -558,7 +558,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 // The C buttons moved on the HUD (interface.h): same screen-to-page mapping as
 // the N64 values (centre x: 660 + 10.9 per pixel from 240.5, centre y:
 // 1100 - 11.25 per pixel from 31.5); C-right is the shoulder pill's icon
-static s16 sCButtonPosX[] = { 856, 1096, 1265, 1396, 1396, 1221, 1570 }; // S30: then D-pad up, down, left, right
+static s16 sCButtonPosX[] = { 856, 616, 1265, 1396, 1396, 1221, 1570 }; // S30: then D-pad up, down, left, right
 static s16 sCButtonPosY[] = { 1280, 1044, 1308, 937, 577, 757, 757 };
 #else
 static s16 sCButtonPosX[] = { 660, 900, 1140, 1396, 1396, 1221, 1570 }; // S30: then D-pad up, down, left, right

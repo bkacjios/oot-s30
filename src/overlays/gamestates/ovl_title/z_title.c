@@ -141,6 +141,21 @@ void ConsoleLogo_Draw(ConsoleLogoState* this) {
     v2.z = 1119.0837;
 
     func_8002EABC(&v1, &v2, &v3, this->state.gfxCtx);
+#ifdef LINUX
+    {
+        // gNintendo64LogoDL loads its own LookAt from 0x01002E50, just past the
+        // end of nintendo_rogo_static (on the N64, whatever follows the
+        // segment in RAM), which leaves the texgen shine flat. Put the
+        // highlight LookAt computed above there (Init allocates the room).
+        u32 size =
+            (uintptr_t)_nintendo_rogo_staticSegmentRomEnd - (uintptr_t)_nintendo_rogo_staticSegmentRomStart;
+        Mtx lookAtMtx;
+        Hilite hilite;
+
+        guLookAtHilite(&lookAtMtx, (LookAt*)(this->staticSegment + size), &hilite, v2.x, v2.y, v2.z, v1.x, v1.y,
+                       v1.z, 0.0f, 1.0f, 0.0f, v3.x, v3.y, v3.z, v3.x, v3.y, v3.z, 16, 16);
+    }
+#endif
     gSPSetLights1(POLY_OPA_DISP++, sTitleLights);
     ConsoleLogo_SetupView(this, 0, 150.0, 300.0);
     Gfx_SetupDL_25Opa(this->state.gfxCtx);
@@ -248,7 +263,12 @@ void ConsoleLogo_Init(GameState* thisx) {
     }
 #endif
 
+#ifdef LINUX
+    // and the logo's LookAt after it (ConsoleLogo_Draw)
+    this->staticSegment = GAME_STATE_ALLOC(&this->state, size + sizeof(LookAt), "../z_title.c", 611);
+#else
     this->staticSegment = GAME_STATE_ALLOC(&this->state, size, "../z_title.c", 611);
+#endif
     PRINTF("z_title.c\n");
     ASSERT(this->staticSegment != NULL, "this->staticSegment != NULL", "../z_title.c", 614);
     DMA_REQUEST_SYNC(this->staticSegment, (uintptr_t)_nintendo_rogo_staticSegmentRomStart, size, "../z_title.c", 615);

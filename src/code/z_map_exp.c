@@ -509,19 +509,26 @@ void Minimap_Draw(PlayState* play) {
                     if (((play->sceneId != SCENE_KAKARIKO_VILLAGE) && (play->sceneId != SCENE_KOKIRI_FOREST) &&
                          (play->sceneId != SCENE_ZORAS_FOUNTAIN)) ||
                         (LINK_AGE_IN_YEARS != YEARS_ADULT)) {
-                        if ((gMapData->owEntranceFlag[sEntranceIconMapIndex] == 0xFFFF) ||
+                        if (
+#ifdef LINUX
+                            // Maps without a dungeon have the icon at (1, 0): in the TV's overscan on the N64,
+                            // on the S30's screen in its top left corner (the real positions have y < 0, which
+                            // the texture rectangle's 10.2 coordinates wrap onto the minimap)
+                            (gMapData->owEntranceIconPosY[sEntranceIconMapIndex] != 0) &&
+#endif
+                            ((gMapData->owEntranceFlag[sEntranceIconMapIndex] == 0xFFFF) ||
                             ((gMapData->owEntranceFlag[sEntranceIconMapIndex] != 0xFFFF) &&
                              (gSaveContext.save.info.infTable[INFTABLE_INDEX_1AX] &
-                              gBitFlags[gMapData->owEntranceFlag[mapIndex]]))) {
+                              gBitFlags[gMapData->owEntranceFlag[mapIndex]])))) {
 
                             gDPLoadTextureBlock(OVERLAY_DISP++, gMapDungeonEntranceIconTex, G_IM_FMT_RGBA, G_IM_SIZ_16b,
                                                 8, 8, 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP,
                                                 G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
 
                             gSPTextureRectangle(OVERLAY_DISP++,
-                                                gMapData->owEntranceIconPosX[sEntranceIconMapIndex] << 2,
+                                                (gMapData->owEntranceIconPosX[sEntranceIconMapIndex] + S30_HUD_RIGHT) << 2,
                                                 gMapData->owEntranceIconPosY[sEntranceIconMapIndex] << 2,
-                                                (gMapData->owEntranceIconPosX[sEntranceIconMapIndex] + 8) << 2,
+                                                (gMapData->owEntranceIconPosX[sEntranceIconMapIndex] + 8 + S30_HUD_RIGHT) << 2,
                                                 (gMapData->owEntranceIconPosY[sEntranceIconMapIndex] + 8) << 2,
                                                 G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
                         }
@@ -533,7 +540,7 @@ void Minimap_Draw(PlayState* play) {
                                             8, 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK,
                                             G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
 
-                        gSPTextureRectangle(OVERLAY_DISP++, 270 << 2, 154 << 2, 278 << 2, 162 << 2, G_TX_RENDERTILE, 0,
+                        gSPTextureRectangle(OVERLAY_DISP++, (270 + S30_HUD_RIGHT) << 2, 154 << 2, (278 + S30_HUD_RIGHT) << 2, 162 << 2, G_TX_RENDERTILE, 0,
                                             0, 1 << 10, 1 << 10);
                     }
 
