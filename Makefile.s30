@@ -39,6 +39,8 @@ CFLAGS := $(TARGET_FLAGS) -O2 -Wall -std=gnu23 -DLINUX -D_LANGUAGE_C -D_GNU_SOUR
     -Iinclude -Iinclude/s30 -I$(N64LIB)/include/s30 -Isrc -I. -Iextracted/$(VERSION) -Ibuild/$(VERSION)
 
 BUILD_DIR := build_s30
+# libultra's OS from the library too (n64/src/os.c)
+N64LIB_OS := 1
 include $(N64LIB)/n64.mk
 ASSET_DIR := build_assets/assets
 TARGET := zelda
@@ -410,6 +412,11 @@ OBJECTS := \
     $(BUILD_DIR)/src/s30/main.o \
     $(BUILD_DIR)/src/s30/buttons.o \
     $(N64LIB_OBJS)
+
+# libultra's OS is the shared library's (n64/src/os.c): its os/, io/ and
+# reg/ files aren't built, less the VI mode tables (data)
+OBJECTS := $(filter-out $(BUILD_DIR)/src/libultra/os/%.o $(BUILD_DIR)/src/libultra/reg/%.o \
+    $(filter-out $(BUILD_DIR)/src/libultra/io/vimode%.o $(BUILD_DIR)/src/libultra/io/vitbl.o,$(filter $(BUILD_DIR)/src/libultra/io/%.o,$(OBJECTS))),$(OBJECTS))
 
 ALL_OBJECTS := $(OBJECTS) $(OVERLAY_OBJECTS)
 

@@ -115,17 +115,10 @@ float qNaN0x10000 = NAN;
 
 // OS variables
 void* osRomBase = (void*)0x10000000;
-s32 osResetType = 0;
 s32 osAppNMIBuffer[16] = {0};
-s32 osTvType = 1;
 u32 osMemSize = 0x800000;
 
 
-// Cache management
-void osWritebackDCache(void* vaddr, s32 size) {}
-void osWritebackDCacheAll(void) {}
-void osInvalDCache(void* vaddr, s32 size) {}
-void osInvalICache(void* vaddr, s32 size) {}
 
 // Interrupt management  
 /* "Interrupts off" = one global recursive lock. The game and audio threads
@@ -155,14 +148,6 @@ OSThread* __osPopThread(OSThread** queue) { return NULL; }
 void __osDispatchThread(void) {}
 void __osCleanupThread(void) {}
 
-// Timer/counter
-u32 osGetCount(void) {
-    /* N64 CPU count register: 46.875 MHz */
-    struct timespec ts;
-
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (u32)((u64)ts.tv_sec * 46875000u + (u64)ts.tv_nsec * 375 / 8000);
-}
 void __osSetCompare(u32 value) {}
 
 // FPU control
@@ -173,8 +158,6 @@ void __osSetFpcCsr(u32 value) {}
 u32 __osGetSR(void) { return 0; }
 void __osSetSR(u32 value) {}
 
-// Watch register
-void __osSetWatchLo(u32 value) {}
 
 // Cause register
 u32 __osGetCause(void) { return 0; }
@@ -195,20 +178,9 @@ void osMapTLBRdb(void) {}
 OSPiHandle* gCartHandle = NULL;
 OSMesgQueue gPiMgrCmdQueue = {0};
 
-// N64 interrupt mask control - controls which hardware interrupts are enabled
-u32 osSetIntMask(u32 mask) { return 0; }
 
 
 
-// Debug printing stub to avoid spam. 
-void osSyncPrintf(const char* fmt, ...) {
-#if 1
-    va_list args;
-    va_start(args, fmt);
-    vprintf(fmt, args);
-    va_end(args);
-#endif
-}
 
 
 
