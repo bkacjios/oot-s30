@@ -12,7 +12,7 @@ WORK ?= ../../s30-build
 N64LIB ?= ../../n64
 SYSROOT := $(abspath $(WORK)/sysroot)
 PYTHON ?= .venv/bin/python3
-VERSION ?= gc-us
+VERSION ?= ntsc-1.0
 
 # Compile with GCC (the game needs -fno-toplevel-reorder, which clang lacks)
 # against the device's musl headers; link with the project's clang/lld wrapper
@@ -52,6 +52,18 @@ OVERLAY_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/src/%.o,$(OVERLAY_SRCS))
 # Asset symbol addresses (segment-relative), one definition each
 ASSET_SYMBOLS := -Wl,$(ASSET_DIR)/symbols.ld
 
+# The files that differ between the N64 versions and the GameCube ones (spec/spec): the fault screen, the arena,
+# the overlay loader; on N64 the boot and 64DD pieces the game calls (src/linux/n64.c: no drive)
+ifneq ($(findstring -DPLATFORM_N64=1,$(VERSION_FLAGS)),)
+PLATFORM_OBJECTS := $(BUILD_DIR)/src/code/fault_n64.o $(BUILD_DIR)/src/libc64/__osMalloc_n64.o \
+    $(BUILD_DIR)/src/libu64/loadfragment2_n64.o $(BUILD_DIR)/src/linux/n64.o
+else
+PLATFORM_OBJECTS := $(BUILD_DIR)/src/code/fault_gc.o $(BUILD_DIR)/src/code/fault_gc_drawer.o \
+    $(BUILD_DIR)/src/libc64/__osMalloc_gc.o $(BUILD_DIR)/src/libu64/load_gc.o \
+    $(BUILD_DIR)/src/libu64/loadfragment2_gc.o $(BUILD_DIR)/src/libu64/logseverity_gc.o \
+    $(BUILD_DIR)/src/libu64/relocation_gc.o
+endif
+
 OBJECTS := \
     $(BUILD_DIR)/src/audio/game/data.o \
     $(BUILD_DIR)/src/audio/game/general.o \
@@ -82,8 +94,6 @@ OBJECTS := \
     $(BUILD_DIR)/src/code/audio_thread_manager.o \
     $(BUILD_DIR)/src/code/db_camera.o \
     $(BUILD_DIR)/src/code/debug_malloc.o \
-    $(BUILD_DIR)/src/code/fault_gc.o \
-    $(BUILD_DIR)/src/code/fault_gc_drawer.o \
     $(BUILD_DIR)/src/code/flg_set.o \
     $(BUILD_DIR)/src/code/game.o \
     $(BUILD_DIR)/src/code/gamealloc.o \
@@ -203,7 +213,6 @@ OBJECTS := \
     $(BUILD_DIR)/src/dmadata/dmadata.o \
     $(BUILD_DIR)/src/elf_message/elf_message_field.o \
     $(BUILD_DIR)/src/elf_message/elf_message_ydan.o \
-    $(BUILD_DIR)/src/libc64/__osMalloc_gc.o \
     $(BUILD_DIR)/src/libc64/aprintf.o \
     $(BUILD_DIR)/src/libc64/malloc.o \
     $(BUILD_DIR)/src/libc64/math64.o \
@@ -211,14 +220,10 @@ OBJECTS := \
     $(BUILD_DIR)/src/libc64/sleep.o \
     $(BUILD_DIR)/src/libu64/debug.o \
     $(BUILD_DIR)/src/libu64/gfxprint.o \
-    $(BUILD_DIR)/src/libu64/load_gc.o \
-    $(BUILD_DIR)/src/libu64/loadfragment2_gc.o \
-    $(BUILD_DIR)/src/libu64/logseverity_gc.o \
     $(BUILD_DIR)/src/libu64/mtxuty-cvt.o \
     $(BUILD_DIR)/src/libu64/pad.o \
     $(BUILD_DIR)/src/libu64/padsetup.o \
     $(BUILD_DIR)/src/libu64/rcp_utils.o \
-    $(BUILD_DIR)/src/libu64/relocation_gc.o \
     $(BUILD_DIR)/src/libu64/runtime.o \
     $(BUILD_DIR)/src/libu64/stackcheck.o \
     $(BUILD_DIR)/src/libultra/audio/auxbus.o \
@@ -418,7 +423,7 @@ OBJECTS := \
 OBJECTS := $(filter-out $(BUILD_DIR)/src/libultra/os/%.o $(BUILD_DIR)/src/libultra/reg/%.o \
     $(filter-out $(BUILD_DIR)/src/libultra/io/vimode%.o $(BUILD_DIR)/src/libultra/io/vitbl.o,$(filter $(BUILD_DIR)/src/libultra/io/%.o,$(OBJECTS))),$(OBJECTS))
 
-ALL_OBJECTS := $(OBJECTS) $(OVERLAY_OBJECTS)
+ALL_OBJECTS := $(OBJECTS) $(PLATFORM_OBJECTS) $(OVERLAY_OBJECTS)
 
 all: $(TARGET)
 

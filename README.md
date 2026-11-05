@@ -11,7 +11,8 @@ There is no N64 build step and no MIPS toolchain: the layout metadata the port
 needs is derived from the ROM on the host.
 
 **No game data is included.** You need your own copy of the game. The default
-version is the GameCube US ROM (`gc-us`).
+version is the first N64 release, NTSC 1.0 (`ntsc-1.0`: its blue A and green B
+buttons and its original music). The GameCube US ROM (`gc-us`) builds too.
 
 ## Requirements
 
@@ -28,7 +29,7 @@ version is the GameCube US ROM (`gc-us`).
 python3 -m venv .venv && .venv/bin/pip install -U pip -r requirements.txt
 
 # your ROM (.z64, .n64 or .v64 all work)
-cp /path/to/your/rom.z64 baseroms/gc-us/baserom.z64
+cp /path/to/your/rom.z64 baseroms/ntsc-1.0/baserom.z64
 
 make -f Makefile.s30 extract          # decompress the ROM, extract assets, generate build inputs
 make -f Makefile.s30 assets           # compile the asset segments for ARM (into build_assets/ and data/)
@@ -57,7 +58,7 @@ variables from `/mnt/sd/home/ports/oot/oot.env`, one `VAR=value` per line.
 
 | variable | default | effect |
 |---|---|---|
-| `VERSION` | `gc-us` | ROM version directory under `baseroms/` |
+| `VERSION` | `ntsc-1.0` | ROM version directory under `baseroms/` (`ntsc-1.0` or `gc-us`; switching versions needs `extract`, `assets` and a clean build) |
 | `WORK` | `../../s30-build` | pocketgo-s30 build tree (sysroot, compiler wrapper) |
 
 ## Layout

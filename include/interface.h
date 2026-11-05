@@ -158,12 +158,12 @@ typedef struct InterfaceContext {
 #ifdef LINUX
 /* PocketGo S30: the buttons sit where they are on the device (s30/input.c),
    drawn SNES style. Face diamond of equal 27 px buttons, about 3 px apart:
-   B on the left (Y), A at the bottom (B), C-left on top (X), C-down on the
-   right (A). C-right (R1) is a shoulder pill in the top right corner, C-up
+   A on the right (A), B at the bottom (B), C-left on top (X), C-down on the
+   left (Y). C-right (R1) is a shoulder pill in the top right corner, C-up
    (Select) a slanted pill top left (z_parameter.c). A_BUTTON_X/Y is the
    corner of the A button's A_BUTTON_VIEW square 3D view. */
-#define A_BUTTON_X 239
-#define A_BUTTON_Y 38
+#define A_BUTTON_X 261
+#define A_BUTTON_Y 17
 #define A_BUTTON_VIEW 40 // A disc 25.5 px: its sharp 3D edge reads larger than the 27 px sprites
 #else
 #define A_BUTTON_VIEW 45
@@ -182,8 +182,8 @@ typedef struct InterfaceContext {
 #endif
 
 #ifdef LINUX
-#define B_BUTTON_X 223
-#define B_BUTTON_Y 23
+#define B_BUTTON_X 245
+#define B_BUTTON_Y 44
 #else
 #define B_BUTTON_X 160
 #define B_BUTTON_Y 17
@@ -203,7 +203,7 @@ typedef struct InterfaceContext {
 #define C_LEFT_BUTTON_X 245
 #define C_LEFT_BUTTON_Y 2
 
-#define C_DOWN_BUTTON_X 267
+#define C_DOWN_BUTTON_X 223
 #define C_DOWN_BUTTON_Y 23
 
 // Shoulder pill: corner and size; its item icon is centred, S30_SHOULDER_ICON px
