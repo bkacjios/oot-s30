@@ -89,6 +89,7 @@ int main(int argc, char** argv) {
         S30OsConfig os = {
             .savePath = gS30SaveFile,
             .saveType = S30_SAVE_SRAM,
+            .noWait = 1, // no scheduler thread to wait for: an empty queue fails
         };
         S30Os_Init(&os);
     }
